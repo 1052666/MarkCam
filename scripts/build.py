@@ -20,7 +20,7 @@ for src in sorted((ROOT/'Sources').glob('*.m')):
         print('REUSE',src.name,flush=True);objects.append(str(obj));continue
     cmd=['clang','--target=arm64-apple-ios16.5','-isysroot',str(SDK),'-fobjc-arc','-fblocks','-fobjc-exceptions','-fexceptions','-Werror=protocol','-O2','-gline-tables-only','-Wall','-Wextra','-Wno-unused-parameter','-Wno-deprecated-declarations','-I'+str(ROOT/'Sources'),'-c',str(src),'-o',str(obj)]
     print('COMPILE',src.name,flush=True);subprocess.run(cmd,check=True);objects.append(str(obj))
-frameworks=['Foundation','UIKit','AVFoundation','CoreMedia','CoreVideo','CoreImage','CoreGraphics','QuartzCore','Photos','PhotosUI','UniformTypeIdentifiers','ImageIO','MobileCoreServices']
+frameworks=['Foundation','UIKit','AVFoundation','CoreMedia','CoreVideo','CoreImage','CoreGraphics','QuartzCore','Metal','Photos','PhotosUI','UniformTypeIdentifiers','ImageIO','MobileCoreServices']
 cmd=['ld64.lld','-arch','arm64','-platform_version','ios','16.5','16.5','-syslibroot',str(SDK),'-lSystem','-lobjc','-adhoc_codesign','-dead_strip']
 for f in frameworks: cmd+=['-framework',f]
 cmd+=objects+['-o',str(APP/'MarkCam')];subprocess.run(cmd,check=True)
@@ -30,7 +30,7 @@ icons=['AppIcon20x2','AppIcon20x3','AppIcon29x2','AppIcon29x3','AppIcon40x2','Ap
 info={
 'CFBundleDevelopmentRegion':'zh_CN','CFBundleLocalizations':['zh_CN','en'],
 'CFBundleExecutable':'MarkCam','CFBundleIdentifier':'app.markcam.camera','CFBundleName':'MarkCam','CFBundleDisplayName':'印记相机',
-'CFBundlePackageType':'APPL','CFBundleInfoDictionaryVersion':'6.0','CFBundleShortVersionString':'1.1.0','CFBundleVersion':'3',
+'CFBundlePackageType':'APPL','CFBundleInfoDictionaryVersion':'6.0','CFBundleShortVersionString':'1.1.1','CFBundleVersion':'4',
 'MinimumOSVersion':'16.5','UIDeviceFamily':[1],'LSRequiresIPhoneOS':True,'UIRequiredDeviceCapabilities':['arm64'],
 'UILaunchScreen':{},'UIUserInterfaceStyle':'Dark','UIStatusBarStyle':'UIStatusBarStyleLightContent',
 'UISupportedInterfaceOrientations':['UIInterfaceOrientationPortrait','UIInterfaceOrientationLandscapeLeft','UIInterfaceOrientationLandscapeRight'],
@@ -44,14 +44,14 @@ with open(APP/'Info.plist','wb') as f: plistlib.dump(info,f)
 privacy={'NSPrivacyTracking':False,'NSPrivacyTrackingDomains':[],'NSPrivacyCollectedDataTypes':[],'NSPrivacyAccessedAPITypes':[{'NSPrivacyAccessedAPIType':'NSPrivacyAccessedAPICategoryFileTimestamp','NSPrivacyAccessedAPITypeReasons':['C617.1']}]}
 with open(APP/'PrivacyInfo.xcprivacy','wb') as f: plistlib.dump(privacy,f)
 os.chmod(APP/'MarkCam',0o755)
-ipa=DIST/'MarkCam-1.1.0-resign-required.ipa'
+ipa=DIST/'MarkCam-1.1.1-resign-required.ipa'
 with zipfile.ZipFile(ipa,'w',zipfile.ZIP_DEFLATED,compresslevel=8) as z:
     for p in sorted((BUILD/'Payload').rglob('*')):
         if p.is_file(): z.write(p,p.relative_to(BUILD))
 header=struct.unpack('<IIII',open(APP/'MarkCam','rb').read(16))
 assert header[0]==0xfeedfacf and header[1]==0x100000c and header[3]==2
 sha=hashlib.sha256(ipa.read_bytes()).hexdigest()
-report={'app':'印记相机','version':'1.1.0 (3)','min_ios':'16.5','target':'arm64','sdk':'theos iPhoneOS16.5','ipa':ipa.name,'bytes':ipa.stat().st_size,'sha256':sha,'signing':'Mach-O ad-hoc signature only. Requires legitimate re-signing/provisioning to install.','device_tested':False,'source_files':[str(x.relative_to(ROOT)) for x in (ROOT/'Sources').glob('*')]}
+report={'app':'印记相机','version':'1.1.1 (4)','min_ios':'16.5','target':'arm64','sdk':'theos iPhoneOS16.5','ipa':ipa.name,'bytes':ipa.stat().st_size,'sha256':sha,'signing':'Mach-O ad-hoc signature only. Requires legitimate re-signing/provisioning to install.','device_tested':False,'source_files':[str(x.relative_to(ROOT)) for x in (ROOT/'Sources').glob('*')]}
 (DIST/'build-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2))
 (DIST/'SHA256SUMS.txt').write_text(sha+'  '+ipa.name+'\n')
 print(json.dumps(report,ensure_ascii=False,indent=2))

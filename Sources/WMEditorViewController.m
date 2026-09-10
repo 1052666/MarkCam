@@ -293,6 +293,7 @@ static NSString *WMEHex(UIColor *color) {
     [self slider:@"EV 曝光补偿" key:@"exposureBias" min:-2 max:2],
     [self action:@"曝光恢复为 0 EV" key:@"resetExposure"],
     [self toggle:@"Live Photo 实况照片" key:@"livePhotoEnabled"],
+    [self toggle:@"流畅优先（取景不调色）" key:@"smoothPreview"],
     [self toggle:@"自动添加水印" key:@"watermarkEnabled"], [self toggle:@"保留原片" key:@"keepOriginal"],
     [self toggle:@"相机九宫格" key:@"gridEnabled"], [self toggle:@"前置镜像" key:@"mirrorFront"],
     [self action:@"闪光灯" key:@"flashMode"], [self action:@"拍照倒计时" key:@"timerSeconds"]]; }
@@ -332,7 +333,7 @@ static NSString *WMEHex(UIColor *color) {
     if (section==1) return @"锁定后不能移动或修改图层；先解锁再编辑。图片保存在本机，文字支持 {date} 和 {time}。";
     if (section==2) return @"仅调整照片底图，水印颜色保持不变。这里的“原图”是调色归零，不会移除水印。";
     if (section==3) return @"切换模板只替换水印图层，调色与相机设置不变。导出包含当前图层和内嵌图片，建议及时备份。";
-    return @"所有修改立即保存。EV 影响真实摄像头曝光，返回取景后生效，不能改变这里的已拍预览图。Live Photo 需摄像头支持和麦克风授权；照片与动态部分都会应用水印。";
+    return @"所有修改立即保存。EV 返回取景后生效。流畅优先使用系统预览，取景不显示调色，但水印可见，照片/视频/实况成片仍应用调色。关闭流畅优先时，有调色自动用GPU预览。0.5×只在硬件支持时提供；2×不保证为光学长焦。Live Photo需要当前镜头支持和麦克风授权。";
 }
 - (NSDictionary *)rowAt:(NSIndexPath *)path {
     if (path.section==1) return path.row<(NSInteger)self.inspectorRows.count ? self.inspectorRows[path.row] : nil;

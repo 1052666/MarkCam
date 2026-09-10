@@ -4,7 +4,7 @@ import pathlib, zipfile, plistlib, struct, hashlib, json, io, re
 from macho_inspect import MachO
 from PIL import Image
 ROOT=pathlib.Path(__file__).resolve().parents[1]
-ipa=ROOT/'dist/MarkCam-1.1.0-resign-required.ipa'
+ipa=ROOT/'dist/MarkCam-1.1.1-resign-required.ipa'
 checks=[]
 def check(name,condition):
     checks.append({'check':name,'passed':bool(condition)})
@@ -18,7 +18,7 @@ with zipfile.ZipFile(ipa) as z:
     for k in ['CFBundleIdentifier','CFBundleExecutable','CFBundlePackageType','CFBundleVersion','CFBundleShortVersionString','MinimumOSVersion','UIDeviceFamily','UILaunchScreen']:
         check('Info.plist '+k,k in info)
     check('Correct executable name',info['CFBundleExecutable']=='MarkCam')
-    check('Feature version 1.1.0 build 3',info['CFBundleShortVersionString']=='1.1.0' and info['CFBundleVersion']=='3')
+    check('Feature version 1.1.1 build 4',info['CFBundleShortVersionString']=='1.1.1' and info['CFBundleVersion']=='4')
     check('Bundle identifier unchanged',info['CFBundleIdentifier']=='app.markcam.camera')
     check('Correct minimum OS',info['MinimumOSVersion']=='16.5')
     check('iPhone device family',info['UIDeviceFamily']==[1])
@@ -56,7 +56,7 @@ with zipfile.ZipFile(ipa) as z:
     check('Has entry point',0x80000028 in cmds)
     check('Has system dyld',0xe in cmds)
     check('Has ad-hoc signature blob',signature is not None and sum(signature)<=len(binary))
-    for framework in ['UIKit','AVFoundation','CoreImage','Photos','PhotosUI','UniformTypeIdentifiers','ImageIO']:
+    for framework in ['UIKit','AVFoundation','CoreImage','Metal','Photos','PhotosUI','UniformTypeIdentifiers','ImageIO']:
         check('Framework '+framework,any('/'+framework+'.framework/' in s for s in libs))
     for s in libs:check('System library only '+s,s.startswith('/System/Library/') or s.startswith('/usr/lib/'))
     parsed=MachO(binary);methods=parsed.methods('CameraViewController')
@@ -76,9 +76,26 @@ with zipfile.ZipFile(ipa) as z:
         check('Compiled live processor '+selector,selector in live_methods)
     for selector in ['openSettings','zoomSliderChanged:','setZoomFactor:','applyExposureSettings','processLiveJob:meta:']:
         check('Compiled camera feature '+selector,selector in methods)
+    preview_methods=parsed.methods('MCPreviewView')
+    for selector in ['submitPixelBuffer:','requestSnapshot:','reset','statistics']:
+        check('Compiled GPU preview '+selector,selector in preview_methods)
+    for selector in ['lensChanged:','wideReferenceForDevice:','drainZoom','updatePreviewRoute','invalidateOverlay']:
+        check('Compiled lens/performance method '+selector,selector in methods)
 camera=(ROOT/'Sources/CameraViewController.m').read_text();editor=(ROOT/'Sources/WMEditorViewController.m').read_text();engine=(ROOT/'Sources/WMEngine.m').read_text()
 live=(ROOT/'Sources/MCLivePhotoProcessor.m').read_text()
+preview=(ROOT/'Sources/MCPreviewView.m').read_text()
 for name,condition in [
+('Ultra-wide virtual device discovery','AVCaptureDeviceTypeBuiltInTripleCamera' in camera and 'AVCaptureDeviceTypeBuiltInDualWideCamera' in camera),
+('True lens switch factor mapping','virtualDeviceSwitchOverVideoZoomFactors' in camera and 'MCZoomHardware' in camera),
+('Frame throttle removed','1./20' not in camera and 'lastFrameAt' not in camera),
+('Bounded GPU work','dispatch_semaphore_create(2)' in preview and 'DISPATCH_TIME_NOW' in preview),
+('GPU destination output','startTaskToRender:frame toDestination:destination' in preview and 'destination.flipped=YES' in preview),
+('System preview available for neutral tone','self.nativePreview.hidden=NO' in camera and 'toneIsActive' in camera),
+('Watermark cache off main','dispatch_async(self.overlayQueue' in camera and '[key isEqual:self.overlayKey]' in camera),
+('Only capture settings change hardware configuration','if(liveChanged||connectionsChanged)' in camera),
+('Snapshot on demand','requestSnapshot:' in camera and 'lastRawFrame' not in camera),
+('Native shared geometry','MCCameraLayout a=MCLayout(' in camera),
+('GPU stops before background','UIApplicationWillResignActiveNotification' in camera and '!self.applicationInactive' in camera),
 ('EV moved off main preview','exposureSlider' not in camera and 'exposureChanged:' not in camera),
 ('Zoom slider actual camera control','self.zoomSlider' in camera and 'd.videoZoomFactor=' in camera),
 ('Pinch and slider share zoom update','setZoomFactor:self.zoomStart*g.scale' in camera and 'setZoomFactor:slider.value' in camera),
@@ -107,7 +124,7 @@ for name,condition in [
 ('Start recording delegate implemented','captureOutput:(AVCaptureFileOutput *)output didStartRecording' in camera),
 ('No wrong recording delegate selector','void)fileOutput:' not in camera),
 ('Native high quality photo capture','capturePhotoWithSettings:p delegate:self' in camera),
-('Single pending display frame','self.framePending=YES' in camera and 'self.framePending=NO' in camera),
+('No stale UI frame backlog','self.previewGeometryPending=YES' in camera and 'self.previewGeometryPending=NO' in camera),
 ('Fallback video preview explicitly labeled','录像兼容模式' in camera and 'nativeVideoPreview' in camera),
 ('Five minute recording ceiling','CMTimeMake(300,1)' in camera),
 ('Retry cleans partial output','无法清理上次未完成' in camera),

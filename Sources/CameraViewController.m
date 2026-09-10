@@ -1,6 +1,9 @@
 #import "CameraViewController.h"
 #import "WMEngine.h"
 #import "WMEditorViewController.h"
+#import "MCPreviewView.h"
+#import "MCCameraLayout.h"
+#import "MCZoomMath.h"
 #import "MCLivePhotoProcessor.h"
 #import <AVFoundation/AVFoundation.h>
 #import <Photos/Photos.h>
@@ -35,8 +38,21 @@ static NSString *MCID(void){return NSUUID.UUID.UUIDString;}
 @property(nonatomic,strong) dispatch_queue_t sessionQueue;
 @property(nonatomic,strong) dispatch_queue_t framesQueue;
 @property(nonatomic,strong) dispatch_queue_t renderQueue;
-@property(nonatomic,strong) CIContext *ciContext;
-@property(nonatomic,strong) UIImageView *preview;
+@property(nonatomic,strong) dispatch_queue_t overlayQueue;
+@property(nonatomic,strong) MCPreviewView *preview;
+@property(nonatomic,strong) UILabel *previewHint;
+@property(nonatomic,strong) UISegmentedControl *lensSelector;
+@property(nonatomic,copy) NSArray<NSNumber *> *lensFactors;
+@property(nonatomic) BOOL gpuFailed;
+@property(nonatomic) BOOL overlayPending;
+@property(nonatomic) NSUInteger overlayRevision;
+@property(nonatomic,strong) NSDictionary *overlayKey;
+@property(atomic) BOOL previewGeometryPending;
+@property(atomic) double expectedAspect;
+@property(atomic) BOOL zoomPending;
+@property(atomic) CGFloat requestedZoom;
+@property(nonatomic) CGFloat wideReference;
+@property(nonatomic) CGFloat rememberedBackZoom;
 @property(nonatomic,strong) UIImageView *overlay;
 @property(nonatomic,strong) MCGridView *gridView;
 @property(nonatomic,strong) UIView *stage;
@@ -65,8 +81,6 @@ static NSString *MCID(void){return NSUUID.UUID.UUIDString;}
 @property(nonatomic,strong) UISegmentedControl *mode;
 @property(nonatomic,strong) UIProgressView *progress;
 @property(nonatomic,strong) UIButton *cancelExportButton;
-@property(nonatomic,strong) UIImage *lastFrame;
-@property(nonatomic,strong) UIImage *lastRawFrame;
 @property(nonatomic,strong) NSTimer *clockTimer;
 @property(nonatomic,strong) NSDate *recordDate;
 @property(nonatomic,strong) AVAssetExportSession *exportSession;
@@ -77,14 +91,14 @@ static NSString *MCID(void){return NSUUID.UUID.UUIDString;}
 @property(nonatomic) BOOL wantsVideo;
 @property(nonatomic) BOOL busy;
 @property(atomic) BOOL inBackground;
+@property(atomic) BOOL applicationInactive;
+@property(nonatomic) NSUInteger statusGeneration;
 @property(atomic) BOOL editorShown;
 @property(nonatomic) BOOL recording;
 @property(nonatomic) NSInteger countdown;
 @property(nonatomic) NSInteger countdownGeneration;
 @property(nonatomic) CGFloat zoomStart;
-@property(nonatomic) CFTimeInterval lastFrameAt;
 @property(atomic) BOOL photoProcessed;
-@property(atomic) BOOL framePending;
 @property(nonatomic) CGSize feedSize;
 @property(nonatomic) CGSize lastOverlaySize;
 @property(atomic) AVCaptureVideoOrientation captureOrientation;
@@ -95,9 +109,10 @@ static NSString *MCID(void){return NSUUID.UUID.UUIDString;}
 @implementation CameraViewController
 - (void)viewDidLoad {
  [super viewDidLoad];self.view.backgroundColor=[UIColor colorWithRed:.045 green:.065 blue:.068 alpha:1];self.overrideUserInterfaceStyle=UIUserInterfaceStyleDark;
- self.sessionQueue=dispatch_queue_create("markcam.capture",DISPATCH_QUEUE_SERIAL);self.framesQueue=dispatch_queue_create("markcam.frames",DISPATCH_QUEUE_SERIAL);self.renderQueue=dispatch_queue_create("markcam.render",DISPATCH_QUEUE_SERIAL);self.ciContext=[CIContext contextWithOptions:@{kCIContextCacheIntermediates:@NO}];self.session=[AVCaptureSession new];self.captureOrientation=AVCaptureVideoOrientationPortrait;
+ self.sessionQueue=dispatch_queue_create("markcam.capture",DISPATCH_QUEUE_SERIAL);self.framesQueue=dispatch_queue_create("markcam.frames",dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL,QOS_CLASS_USER_INTERACTIVE,0));self.renderQueue=dispatch_queue_create("markcam.render",DISPATCH_QUEUE_SERIAL);self.overlayQueue=dispatch_queue_create("markcam.overlay",dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL,QOS_CLASS_USER_INITIATED,0));self.session=[AVCaptureSession new];self.captureOrientation=AVCaptureVideoOrientationPortrait;self.wideReference=1;self.rememberedBackZoom=1;
  self.activeSettings=[[WMEngine shared] snapshot];self.feedSize=CGSizeMake(3,4);[self makeUI];[self refreshSettings];
  NSNotificationCenter *nc=NSNotificationCenter.defaultCenter;
+ [nc addObserver:self selector:@selector(willResignActive:) name:UIApplicationWillResignActiveNotification object:nil];[nc addObserver:self selector:@selector(didBecomeActive:) name:UIApplicationDidBecomeActiveNotification object:nil];
  [nc addObserver:self selector:@selector(background:) name:UIApplicationDidEnterBackgroundNotification object:nil];[nc addObserver:self selector:@selector(foreground:) name:UIApplicationWillEnterForegroundNotification object:nil];
  [nc addObserver:self selector:@selector(interrupted:) name:AVCaptureSessionWasInterruptedNotification object:self.session];[nc addObserver:self selector:@selector(interruptionEnded:) name:AVCaptureSessionInterruptionEndedNotification object:self.session];[nc addObserver:self selector:@selector(runtimeError:) name:AVCaptureSessionRuntimeErrorNotification object:self.session];
  self.clockTimer=[NSTimer scheduledTimerWithTimeInterval:1 target:self selector:@selector(tick) userInfo:nil repeats:YES];[self requestCamera];
@@ -110,13 +125,15 @@ static NSString *MCID(void){return NSUUID.UUID.UUIDString;}
  self.watermarkButton=[self button:@"水印开启" action:@selector(toggleWatermark)];
  self.liveButton=[self button:@"LIVE 关" action:@selector(toggleLive)];self.liveButton.accessibilityLabel=@"实况照片开关";
  self.settingsButton=[self button:@"设置" action:@selector(openSettings)];self.settingsButton.accessibilityLabel=@"打开相机设置，曝光和实况照片";
- self.stage=[UIView new];self.stage.backgroundColor=UIColor.blackColor;self.stage.layer.cornerRadius=20;self.stage.clipsToBounds=YES;[self.view addSubview:self.stage];
- self.preview=[UIImageView new];self.preview.contentMode=UIViewContentModeScaleAspectFit;[self.stage addSubview:self.preview];
- self.nativePreview=[AVCaptureVideoPreviewLayer layerWithSession:self.session];self.nativePreview.videoGravity=AVLayerVideoGravityResizeAspect;self.nativePreview.hidden=YES;[self.stage.layer insertSublayer:self.nativePreview atIndex:0];
+ self.stage=[UIView new];self.stage.backgroundColor=UIColor.blackColor;self.stage.clipsToBounds=YES;[self.view addSubview:self.stage];
+ self.preview=[[MCPreviewView alloc]initWithFrame:CGRectZero];[self.stage addSubview:self.preview];__weak typeof(self) weak=self;self.preview.onFailure=^(NSString *reason){weak.gpuFailed=YES;[weak updatePreviewRoute];[weak status:@"已切换系统流畅取景，调色仍应用到成片"];};
+ self.nativePreview=[AVCaptureVideoPreviewLayer layerWithSession:self.session];self.nativePreview.videoGravity=AVLayerVideoGravityResizeAspect;[self.stage.layer insertSublayer:self.nativePreview atIndex:0];
+ self.previewHint=[UILabel new];self.previewHint.textColor=[UIColor colorWithWhite:1 alpha:.85];self.previewHint.font=[UIFont systemFontOfSize:11 weight:UIFontWeightMedium];self.previewHint.textAlignment=NSTextAlignmentCenter;self.previewHint.backgroundColor=[UIColor colorWithWhite:0 alpha:.3];self.previewHint.layer.cornerRadius=8;self.previewHint.clipsToBounds=YES;[self.stage addSubview:self.previewHint];
  self.overlay=[UIImageView new];self.overlay.contentMode=UIViewContentModeScaleToFill;self.overlay.userInteractionEnabled=NO;[self.stage addSubview:self.overlay];
  self.gridView=[MCGridView new];self.gridView.backgroundColor=UIColor.clearColor;self.gridView.userInteractionEnabled=NO;[self.stage addSubview:self.gridView];
  self.zoomSlider=[UISlider new];self.zoomSlider.minimumValue=1;self.zoomSlider.maximumValue=8;self.zoomSlider.value=1;self.zoomSlider.tintColor=MCAccent();self.zoomSlider.accessibilityLabel=@"相机缩放倍率";[self.zoomSlider addTarget:self action:@selector(zoomSliderChanged:) forControlEvents:UIControlEventValueChanged];[self.stage addSubview:self.zoomSlider];
  self.zoomLabel=[UILabel new];self.zoomLabel.text=@"1.0×";self.zoomLabel.textColor=UIColor.whiteColor;self.zoomLabel.font=[UIFont monospacedDigitSystemFontOfSize:13 weight:UIFontWeightMedium];[self.stage addSubview:self.zoomLabel];
+ self.lensSelector=[[UISegmentedControl alloc]initWithItems:@[@"1×",@"2×"]];self.lensFactors=@[@1,@2];self.lensSelector.selectedSegmentIndex=0;self.lensSelector.backgroundColor=[UIColor colorWithWhite:0 alpha:.55];self.lensSelector.selectedSegmentTintColor=[UIColor colorWithWhite:1 alpha:.18];[self.lensSelector setTitleTextAttributes:@{NSForegroundColorAttributeName:UIColor.whiteColor} forState:UIControlStateNormal];[self.lensSelector setTitleTextAttributes:@{NSForegroundColorAttributeName:UIColor.systemYellowColor} forState:UIControlStateSelected];[self.lensSelector addTarget:self action:@selector(lensChanged:) forControlEvents:UIControlEventValueChanged];self.lensSelector.accessibilityLabel=@"后置镜头与快捷缩放";[self.stage addSubview:self.lensSelector];
  UITapGestureRecognizer *tap=[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(focus:)];tap.delegate=self;[self.stage addGestureRecognizer:tap];UIPinchGestureRecognizer *pinch=[[UIPinchGestureRecognizer alloc]initWithTarget:self action:@selector(zoom:)];pinch.delegate=self;[self.stage addGestureRecognizer:pinch];
  self.recordLabel=[UILabel new];self.recordLabel.textColor=UIColor.systemRedColor;self.recordLabel.font=[UIFont monospacedDigitSystemFontOfSize:15 weight:UIFontWeightSemibold];self.recordLabel.textAlignment=NSTextAlignmentCenter;[self.stage addSubview:self.recordLabel];
  self.countdownLabel=[UILabel new];self.countdownLabel.font=[UIFont systemFontOfSize:68 weight:UIFontWeightLight];self.countdownLabel.textColor=UIColor.whiteColor;self.countdownLabel.textAlignment=NSTextAlignmentCenter;[self.stage addSubview:self.countdownLabel];
@@ -129,24 +146,32 @@ static NSString *MCID(void){return NSUUID.UUID.UUIDString;}
  self.filesButton.accessibilityLabel=@"待保存作品与失败重试";self.shutter.accessibilityLabel=@"拍照";self.stage.accessibilityLabel=@"相机取景，轻点对焦，双指变焦";
 }
 - (void)viewDidLayoutSubviews {
- [super viewDidLayoutSubviews];UIEdgeInsets s=self.view.safeAreaInsets;CGFloat w=self.view.bounds.size.width,h=self.view.bounds.size.height;BOOL landscape=w>h;
- if(landscape){self.titleLabel.frame=CGRectMake(s.left+16,s.top+8,w-s.left-s.right-210,32);self.watermarkButton.frame=CGRectMake(w-s.right-130,s.top+7,114,34);CGFloat availH=h-s.top-s.bottom-84,availW=w-s.left-s.right-174;CGFloat ratio=self.feedSize.width/MAX(1,self.feedSize.height);CGSize fs=CGSizeMake(MIN(availW,availH*ratio),0);fs.height=fs.width/ratio;self.stage.frame=CGRectMake(s.left+12+(availW-fs.width)/2,s.top+48+(availH-fs.height)/2,fs.width,fs.height);CGFloat x=w-s.right-148;self.mode.frame=CGRectMake(x,s.top+52,134,30);self.shutter.frame=CGRectMake(x+35,s.top+90,64,64);self.filesButton.frame=CGRectMake(x,s.top+163,64,35);self.switchButton.frame=CGRectMake(x+70,s.top+163,64,35);self.editButton.frame=CGRectMake(x,s.top+207,134,40);self.editButton.titleLabel.font=[UIFont systemFontOfSize:12 weight:UIFontWeightSemibold];self.statusLabel.frame=CGRectMake(s.left+16,h-s.bottom-34,availW,30);
- }else{self.titleLabel.frame=CGRectMake(20,s.top+8,w-155,36);self.watermarkButton.frame=CGRectMake(w-124,s.top+8,104,34);CGFloat top=s.top+58,availH=h-s.bottom-top-200,availW=w-24;CGFloat ratio=self.feedSize.width/MAX(1,self.feedSize.height);CGFloat fw=MIN(availW,availH*ratio),fh=fw/ratio;self.stage.frame=CGRectMake((w-fw)/2,top+(availH-fh)/2,fw,fh);CGFloat base=h-s.bottom-185;self.statusLabel.frame=CGRectMake(16,base,w-32,34);self.mode.frame=CGRectMake((w-160)/2,base+40,160,30);self.shutter.frame=CGRectMake((w-70)/2,base+80,70,70);self.filesButton.frame=CGRectMake(26,base+94,84,40);self.switchButton.frame=CGRectMake(w-110,base+94,84,40);self.editButton.frame=CGRectMake((w-220)/2,base+157,220,34);}
- self.shutter.layer.cornerRadius=self.shutter.bounds.size.width/2;self.preview.frame=self.stage.bounds;self.nativePreview.frame=self.stage.bounds;self.overlay.frame=self.stage.bounds;self.gridView.frame=self.stage.bounds;[self.gridView setNeedsDisplay];self.recordLabel.frame=CGRectMake(0,12,self.stage.bounds.size.width,24);self.countdownLabel.frame=self.stage.bounds;
- self.zoomLabel.frame=CGRectMake(12,self.stage.bounds.size.height-40,55,34);self.zoomSlider.frame=CGRectMake(70,self.stage.bounds.size.height-44,MAX(40,self.stage.bounds.size.width-88),44);
- self.titleLabel.text=@"印记相机";self.titleLabel.font=[UIFont systemFontOfSize:18 weight:UIFontWeightBold];self.titleLabel.frame=CGRectMake(s.left+14,s.top+8,100,36);
- CGFloat right=w-s.right-12;self.settingsButton.frame=CGRectMake(right-48,s.top+8,48,34);self.liveButton.frame=CGRectMake(right-122,s.top+8,68,34);self.watermarkButton.frame=CGRectMake(right-208,s.top+8,80,34);self.liveButton.titleLabel.font=[UIFont systemFontOfSize:12 weight:UIFontWeightSemibold];self.watermarkButton.titleLabel.font=[UIFont systemFontOfSize:12 weight:UIFontWeightSemibold];
- self.progress.frame=CGRectMake(24,CGRectGetMaxY(self.stage.frame)-5,MAX(50,self.stage.bounds.size.width-24),2);self.cancelExportButton.frame=CGRectMake(CGRectGetMaxX(self.stage.frame)-108,CGRectGetMaxY(self.stage.frame)-44,100,30);
- CGSize os=self.stage.bounds.size;if(!CGSizeEqualToSize(os,self.lastOverlaySize)){self.lastOverlaySize=os;[self updateOverlay];}
+ [super viewDidLayoutSubviews];UIEdgeInsets s=self.view.safeAreaInsets;CGFloat w=self.view.bounds.size.width,h=self.view.bounds.size.height;
+ MCCameraLayout a=MCLayout(w,h,s.top,s.bottom,s.left,s.right,self.feedSize.width/MAX(1,self.feedSize.height));
+ #define BOX(r) CGRectMake((r).x,(r).y,(r).w,(r).h)
+ [CATransaction begin];[CATransaction setDisableActions:YES];
+ self.stage.frame=BOX(a.stage);self.preview.frame=self.stage.bounds;self.nativePreview.frame=self.stage.bounds;self.overlay.frame=self.stage.bounds;self.gridView.frame=self.stage.bounds;[self.gridView setNeedsDisplay];
+ self.mode.frame=BOX(a.mode);self.shutter.frame=BOX(a.shutter);self.filesButton.frame=BOX(a.files);self.switchButton.frame=BOX(a.flip);self.editButton.frame=BOX(a.edit);
+ self.watermarkButton.frame=BOX(a.watermark);self.liveButton.frame=BOX(a.live);self.settingsButton.frame=BOX(a.settings);self.previewHint.frame=BOX(a.hint);self.titleLabel.hidden=YES;
+ self.zoomLabel.frame=BOX(a.zoomLabel);self.zoomSlider.frame=BOX(a.zoomSlider);self.lensSelector.frame=BOX(a.lenses);
+ self.statusLabel.frame=BOX(a.status);self.statusLabel.backgroundColor=[UIColor colorWithWhite:0 alpha:.38];self.statusLabel.layer.cornerRadius=7;self.statusLabel.clipsToBounds=YES;
+ self.shutter.layer.cornerRadius=a.shutter.w/2;self.recordLabel.frame=CGRectMake(0,80,a.stage.w,24);self.countdownLabel.frame=self.stage.bounds;
+ self.progress.frame=CGRectMake(a.stage.x+12,a.stage.y+a.stage.h-3,MAX(1,a.stage.w-24),2);self.cancelExportButton.frame=CGRectMake(a.stage.x+a.stage.w-114,a.status.y-46,102,40);
+ [self.editButton setTitle:w>h?@"水印 · 调色":@"水印 · 模板 · 调色" forState:UIControlStateNormal];self.editButton.titleLabel.font=[UIFont systemFontOfSize:12 weight:UIFontWeightMedium];
+ for(UIView *v in @[self.mode,self.shutter,self.filesButton,self.switchButton,self.editButton,self.watermarkButton,self.liveButton,self.settingsButton,self.progress,self.cancelExportButton,self.statusLabel])[self.view bringSubviewToFront:v];
+ [self.stage bringSubviewToFront:self.previewHint];[CATransaction commit];
+ #undef BOX
+ CGSize os=self.stage.bounds.size;if(!CGSizeEqualToSize(os,self.lastOverlaySize)){self.lastOverlaySize=os;[self invalidateOverlay];}
 }
 - (AVCaptureVideoOrientation)orientation {
  UIInterfaceOrientation o=self.view.window.windowScene.interfaceOrientation;
  switch(o){case UIInterfaceOrientationLandscapeLeft:return AVCaptureVideoOrientationLandscapeLeft;case UIInterfaceOrientationLandscapeRight:return AVCaptureVideoOrientationLandscapeRight;case UIInterfaceOrientationPortraitUpsideDown:return AVCaptureVideoOrientationPortraitUpsideDown;default:return AVCaptureVideoOrientationPortrait;}
 }
 - (void)viewWillTransitionToSize:(CGSize)size withTransitionCoordinator:(id<UIViewControllerTransitionCoordinator>)c {
+ self.preview.renderingEnabled=NO;[self.preview reset];
  [super viewWillTransitionToSize:size withTransitionCoordinator:c];[c animateAlongsideTransition:^(id<UIViewControllerTransitionCoordinatorContext> context){[self.view setNeedsLayout];} completion:^(id<UIViewControllerTransitionCoordinatorContext> context){if(!self.busy&&!self.recording){self.captureOrientation=[self orientation];dispatch_async(self.sessionQueue,^{[self applyConnections];});}}];
 }
-- (void)status:(NSString *)s {dispatch_async(dispatch_get_main_queue(),^{self.statusLabel.text=s;});}
+- (void)status:(NSString *)s {dispatch_async(dispatch_get_main_queue(),^{self.statusLabel.text=s;self.statusLabel.alpha=1;NSUInteger generation=++self.statusGeneration;dispatch_after(dispatch_time(DISPATCH_TIME_NOW,5*NSEC_PER_SEC),dispatch_get_main_queue(),^{if(generation==self.statusGeneration&&!self.busy&&!self.recording)[UIView animateWithDuration:.2 animations:^{self.statusLabel.alpha=0;}];});});}
 - (void)alert:(NSString *)title message:(NSString *)message {
  dispatch_async(dispatch_get_main_queue(),^{if(self.inBackground){[self status:message];return;}UIViewController *vc=self;while(vc.presentedViewController)vc=vc.presentedViewController;UIAlertController *a=[UIAlertController alertControllerWithTitle:title message:message preferredStyle:UIAlertControllerStyleAlert];[a addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleCancel handler:nil]];[vc presentViewController:a animated:YES completion:nil];});
 }
@@ -156,14 +181,38 @@ static NSString *MCID(void){return NSUUID.UUID.UUIDString;}
 - (void)requestCamera {
  AVAuthorizationStatus st=[AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo];if(st==AVAuthorizationStatusAuthorized){[self configure];return;}if(st==AVAuthorizationStatusNotDetermined){[AVCaptureDevice requestAccessForMediaType:AVMediaTypeVideo completionHandler:^(BOOL ok){dispatch_async(dispatch_get_main_queue(),^{if(ok)[self configure];else{[self status:@"相机未授权；仍可编辑水印模板"];[self permissionAlert:@"拍摄需要相机权限，可在系统设置中开启。"];}});}];}else{[self status:@"相机权限未开启"];[self permissionAlert:@"拍摄需要相机权限，可在系统设置中开启。"];}
 }
-- (AVCaptureDevice *)deviceForPosition:(AVCaptureDevicePosition)p {return [AVCaptureDevice defaultDeviceWithDeviceType:AVCaptureDeviceTypeBuiltInWideAngleCamera mediaType:AVMediaTypeVideo position:p];}
+- (AVCaptureDevice *)deviceForPosition:(AVCaptureDevicePosition)p {
+ NSArray *types=p==AVCaptureDevicePositionBack?@[AVCaptureDeviceTypeBuiltInTripleCamera,AVCaptureDeviceTypeBuiltInDualWideCamera,AVCaptureDeviceTypeBuiltInDualCamera,AVCaptureDeviceTypeBuiltInWideAngleCamera]:@[AVCaptureDeviceTypeBuiltInWideAngleCamera];
+ for(AVCaptureDeviceType type in types){AVCaptureDevice *d=[AVCaptureDevice defaultDeviceWithDeviceType:type mediaType:AVMediaTypeVideo position:p];if(d)return d;}return nil;
+}
+- (CGFloat)wideReferenceForDevice:(AVCaptureDevice *)device {
+ NSArray *parts=device.constituentDevices,*factors=device.virtualDeviceSwitchOverVideoZoomFactors;
+ for(NSUInteger i=0;i<parts.count;i++)if([((AVCaptureDevice *)parts[i]).deviceType isEqual:AVCaptureDeviceTypeBuiltInWideAngleCamera]){
+  if(i>0&&i-1<factors.count){double f=[factors[i-1]doubleValue];return isfinite(f)&&f>=1?f:1;}return 1;
+ }
+ return 1;
+}
+- (BOOL)applyDisplayZoom:(CGFloat)display error:(NSError **)error {
+ AVCaptureDevice *d=self.cameraInput.device;if(!d)return NO;
+ if(![d lockForConfiguration:error])return NO;
+ @try{d.videoZoomFactor=MCZoomHardware(display,[self wideReferenceForDevice:d],d.minAvailableVideoZoomFactor,d.maxAvailableVideoZoomFactor);return YES;}
+ @catch(NSException *exception){if(error)*error=[NSError errorWithDomain:@"MarkCam.Zoom" code:1 userInfo:@{NSLocalizedDescriptionKey:exception.reason?:@"镜头倍率不可用"}];return NO;}
+ @finally{[d unlockForConfiguration];}
+}
+- (void)configureZoomForCurrentDevice:(CGFloat)display {
+ self.wideReference=[self wideReferenceForDevice:self.cameraInput.device];NSError *error=nil;
+ if(![self applyDisplayZoom:display error:&error])[self status:@"无法设置当前倍率，已保留镜头原倍率"];
+ [self refreshZoomUI];
+}
 - (void)configure {
  dispatch_async(self.sessionQueue,^{if(self.configured){if(!self.inBackground&&!self.editorShown)[self.session startRunning];return;}NSError *e=nil;AVCaptureDevice *d=[self deviceForPosition:AVCaptureDevicePositionBack];AVCaptureDeviceInput *i=[AVCaptureDeviceInput deviceInputWithDevice:d error:&e];if(!i||![self.session canAddInput:i]){[self status:e.localizedDescription?:@"无法打开相机"];return;}[self.session beginConfiguration];self.session.sessionPreset=AVCaptureSessionPresetPhoto;[self.session addInput:i];self.cameraInput=i;
  self.photoOutput=[AVCapturePhotoOutput new];self.photoOutput.maxPhotoQualityPrioritization=AVCapturePhotoQualityPrioritizationQuality;self.photoOutput.highResolutionCaptureEnabled=YES;
  if([self.session canAddOutput:self.photoOutput])[self.session addOutput:self.photoOutput];
- self.videoOutput=[AVCaptureVideoDataOutput new];self.videoOutput.alwaysDiscardsLateVideoFrames=YES;self.videoOutput.videoSettings=@{(NSString *)kCVPixelBufferPixelFormatTypeKey:@(kCVPixelFormatType_32BGRA)};[self.videoOutput setSampleBufferDelegate:self queue:self.framesQueue];if([self.session canAddOutput:self.videoOutput])[self.session addOutput:self.videoOutput];
+ self.videoOutput=[AVCaptureVideoDataOutput new];self.videoOutput.alwaysDiscardsLateVideoFrames=YES;self.videoOutput.automaticallyConfiguresOutputBufferDimensions=NO;self.videoOutput.deliversPreviewSizedOutputBuffers=YES;
+ NSArray *formats=self.videoOutput.availableVideoCVPixelFormatTypes;NSNumber *format=[formats containsObject:@(kCVPixelFormatType_420YpCbCr8BiPlanarFullRange)]?@(kCVPixelFormatType_420YpCbCr8BiPlanarFullRange):([formats containsObject:@(kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange)]?@(kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange):@(kCVPixelFormatType_32BGRA));self.videoOutput.videoSettings=@{(NSString *)kCVPixelBufferPixelFormatTypeKey:format};[self.videoOutput setSampleBufferDelegate:self queue:self.framesQueue];if([self.session canAddOutput:self.videoOutput])[self.session addOutput:self.videoOutput];
+ self.nativeVideoPreview=![self.session.outputs containsObject:self.videoOutput];
  self.movieOutput=[AVCaptureMovieFileOutput new];self.movieOutput.maxRecordedDuration=CMTimeMake(300,1);self.movieOutput.minFreeDiskSpaceLimit=150*1024*1024;
- [self configureLiveMode];[self applyConnections];[self.session commitConfiguration];self.configured=YES;if(!self.inBackground&&!self.editorShown)[self.session startRunning];[self status:@"照片模式 · 轻点对焦 / 双指变焦"];dispatch_async(dispatch_get_main_queue(),^{[self updateControls];});});
+ [self configureLiveMode];[self applyConnections];[self.session commitConfiguration];[self configureZoomForCurrentDevice:1];self.configured=YES;if(!self.inBackground&&!self.editorShown)[self.session startRunning];[self status:@"照片模式 · 轻点对焦 / 双指变焦"];dispatch_async(dispatch_get_main_queue(),^{[self updateControls];});});
 }
 - (BOOL)ensureAudioInput {
  if([AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio]!=AVAuthorizationStatusAuthorized)return NO;
@@ -206,7 +255,9 @@ static NSString *MCID(void){return NSUUID.UUID.UUIDString;}
  [self applyExposureSettings];
  BOOL mirror=self.cameraInput.device.position==AVCaptureDevicePositionFront&&[self.activeSettings[@"mirrorFront"] boolValue];
  for(AVCaptureOutput *out in self.session.outputs){AVCaptureConnection *c=[out connectionWithMediaType:AVMediaTypeVideo];if(c.isVideoOrientationSupported)c.videoOrientation=self.captureOrientation;if(c.isVideoMirroringSupported){c.automaticallyAdjustsVideoMirroring=NO;c.videoMirrored=mirror;}}
- AVCaptureVideoOrientation orientation=self.captureOrientation;dispatch_async(dispatch_get_main_queue(),^{AVCaptureConnection *previewConnection=self.nativePreview.connection;if(previewConnection.isVideoOrientationSupported)previewConnection.videoOrientation=orientation;if(previewConnection.isVideoMirroringSupported){previewConnection.automaticallyAdjustsVideoMirroring=NO;previewConnection.videoMirrored=mirror;}if(self.nativeVideoPreview){BOOL portrait=orientation==AVCaptureVideoOrientationPortrait||orientation==AVCaptureVideoOrientationPortraitUpsideDown;self.feedSize=portrait?CGSizeMake(9,16):CGSizeMake(16,9);[self.view setNeedsLayout];}});
+ AVCaptureVideoOrientation orientation=self.captureOrientation;BOOL video=[self.session.outputs containsObject:self.movieOutput];
+ dispatch_async(dispatch_get_main_queue(),^{[CATransaction begin];[CATransaction setDisableActions:YES];AVCaptureConnection *previewConnection=self.nativePreview.connection;if(previewConnection.isVideoOrientationSupported&&previewConnection.videoOrientation!=orientation)previewConnection.videoOrientation=orientation;if(previewConnection.isVideoMirroringSupported){previewConnection.automaticallyAdjustsVideoMirroring=NO;previewConnection.videoMirrored=mirror;}[CATransaction commit];
+ BOOL portrait=orientation==AVCaptureVideoOrientationPortrait||orientation==AVCaptureVideoOrientationPortraitUpsideDown;self.feedSize=video?(portrait?CGSizeMake(9,16):CGSizeMake(16,9)):(portrait?CGSizeMake(3,4):CGSizeMake(4,3));self.expectedAspect=self.feedSize.width/self.feedSize.height;[self.view setNeedsLayout];[self updatePreviewRoute];});
 }
 - (void)modeChanged {
  if(self.busy||self.recording){self.mode.selectedSegmentIndex=self.wantsVideo?1:0;return;}BOOL video=self.mode.selectedSegmentIndex==1;if(video){AVAuthorizationStatus s=[AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio];if(s==AVAuthorizationStatusNotDetermined){[AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio completionHandler:^(BOOL ok){dispatch_async(dispatch_get_main_queue(),^{if(ok)[self setVideoMode:YES];else{self.mode.selectedSegmentIndex=0;[self permissionAlert:@"有声录像需要麦克风权限。照片拍摄不受影响。"];}});}];return;}if(s!=AVAuthorizationStatusAuthorized){self.mode.selectedSegmentIndex=0;[self permissionAlert:@"有声录像需要麦克风权限，请先开启后再录制。"];return;}}[self setVideoMode:video];
@@ -214,6 +265,7 @@ static NSString *MCID(void){return NSUUID.UUID.UUIDString;}
 - (void)setVideoMode:(BOOL)video {
  self.busy=YES;[self updateControls];dispatch_async(self.sessionQueue,^{
  if(!self.configured){dispatch_async(dispatch_get_main_queue(),^{self.busy=NO;self.mode.selectedSegmentIndex=0;[self updateControls];});return;}
+ CGFloat priorZoom=MCZoomDisplay(self.cameraInput.device.videoZoomFactor,[self wideReferenceForDevice:self.cameraInput.device]);
  [self.session beginConfiguration];BOOL success=YES;
  if(video){if([self.session.outputs containsObject:self.photoOutput])[self.session removeOutput:self.photoOutput];if([self.session canSetSessionPreset:AVCaptureSessionPreset1920x1080])self.session.sessionPreset=AVCaptureSessionPreset1920x1080;else self.session.sessionPreset=AVCaptureSessionPresetHigh;
  if(!self.audioInput){NSError *err=nil;AVCaptureDevice *audio=[AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeAudio];if(audio)self.audioInput=[AVCaptureDeviceInput deviceInputWithDevice:audio error:&err];}
@@ -221,28 +273,44 @@ static NSString *MCID(void){return NSUUID.UUID.UUIDString;}
  if([self.session canAddOutput:self.movieOutput])[self.session addOutput:self.movieOutput];if(![self.session.outputs containsObject:self.movieOutput]){if([self.session.outputs containsObject:self.videoOutput])[self.session removeOutput:self.videoOutput];if([self.session canAddOutput:self.movieOutput])[self.session addOutput:self.movieOutput];}success=[self.session.outputs containsObject:self.movieOutput]&&self.audioInput&&[self.session.inputs containsObject:self.audioInput];
  }else{[self.session removeOutput:self.movieOutput];if(self.audioInput&&[self.session.inputs containsObject:self.audioInput])[self.session removeInput:self.audioInput];self.session.sessionPreset=AVCaptureSessionPresetPhoto;if([self.session canAddOutput:self.photoOutput])[self.session addOutput:self.photoOutput];}
  if(!success){[self.session removeOutput:self.movieOutput];if(self.audioInput&&[self.session.inputs containsObject:self.audioInput])[self.session removeInput:self.audioInput];self.session.sessionPreset=AVCaptureSessionPresetPhoto;if([self.session canAddOutput:self.photoOutput])[self.session addOutput:self.photoOutput];}
- if(!video||!success){if(![self.session.outputs containsObject:self.videoOutput]&&[self.session canAddOutput:self.videoOutput])[self.session addOutput:self.videoOutput];}self.nativeVideoPreview=video&&success&&![self.session.outputs containsObject:self.videoOutput];
- [self configureLiveMode];[self applyConnections];[self.session commitConfiguration];if(video&&success){AVCaptureDevice *d=self.cameraInput.device;NSError *err=nil;if([d lockForConfiguration:&err]){for(AVFrameRateRange *r in d.activeFormat.videoSupportedFrameRateRanges){if(r.minFrameRate<=30&&r.maxFrameRate>=30){d.activeVideoMinFrameDuration=CMTimeMake(1,30);d.activeVideoMaxFrameDuration=CMTimeMake(1,30);break;}}[d unlockForConfiguration];}}
- dispatch_async(dispatch_get_main_queue(),^{self.wantsVideo=video&&success;self.nativePreview.hidden=!self.nativeVideoPreview;self.preview.hidden=self.nativeVideoPreview;self.mode.selectedSegmentIndex=self.wantsVideo?1:0;self.busy=NO;[self updateControls];[self status:success?(video?(self.nativeVideoPreview?@"录像兼容模式 · 水印可见，调色在成片应用":@"1080p · 有声录像 · 单段最长 5 分钟"):@"照片模式 · 原生高画质"):@"当前设备无法启用有声录像"];});});
+ if(!video||!success){if(![self.session.outputs containsObject:self.videoOutput]&&[self.session canAddOutput:self.videoOutput])[self.session addOutput:self.videoOutput];}self.nativeVideoPreview=![self.session.outputs containsObject:self.videoOutput];
+ [self configureLiveMode];[self applyConnections];[self.session commitConfiguration];[self configureZoomForCurrentDevice:priorZoom];if(video&&success){AVCaptureDevice *d=self.cameraInput.device;NSError *err=nil;if([d lockForConfiguration:&err]){for(AVFrameRateRange *r in d.activeFormat.videoSupportedFrameRateRanges){if(r.minFrameRate<=30&&r.maxFrameRate>=30){d.activeVideoMinFrameDuration=CMTimeMake(1,30);d.activeVideoMaxFrameDuration=CMTimeMake(1,30);break;}}[d unlockForConfiguration];}}
+ dispatch_async(dispatch_get_main_queue(),^{self.wantsVideo=video&&success;[self updatePreviewRoute];self.mode.selectedSegmentIndex=self.wantsVideo?1:0;self.busy=NO;[self updateControls];[self status:success?(video?(self.nativeVideoPreview?@"录像兼容模式 · 水印可见，调色在成片应用":@"1080p · 有声录像 · 单段最长 5 分钟"):@"照片模式 · 原生高画质"):@"当前设备无法启用有声录像"];});});
 }
 - (void)switchCamera {
- if(self.busy||self.recording||!self.configured)return;self.busy=YES;[self updateControls];dispatch_async(self.sessionQueue,^{AVCaptureDevicePosition p=self.cameraInput.device.position==AVCaptureDevicePositionBack?AVCaptureDevicePositionFront:AVCaptureDevicePositionBack;NSError *e=nil;AVCaptureDevice *d=[self deviceForPosition:p];AVCaptureDeviceInput *i=d?[AVCaptureDeviceInput deviceInputWithDevice:d error:&e]:nil;if(i){[self.session beginConfiguration];AVCaptureDeviceInput *old=self.cameraInput;[self.session removeInput:old];if([self.session canAddInput:i]){[self.session addInput:i];self.cameraInput=i;}else[self.session addInput:old];[self configureLiveMode];[self applyConnections];[self.session commitConfiguration];}dispatch_async(dispatch_get_main_queue(),^{self.busy=NO;[self updateControls];if(e)[self alert:@"切换失败" message:e.localizedDescription];});});
+ if(self.busy||self.recording||!self.configured)return;self.busy=YES;[self updateControls];dispatch_async(self.sessionQueue,^{AVCaptureDevicePosition p=self.cameraInput.device.position==AVCaptureDevicePositionBack?AVCaptureDevicePositionFront:AVCaptureDevicePositionBack;NSError *e=nil;AVCaptureDevice *d=[self deviceForPosition:p];AVCaptureDeviceInput *i=d?[AVCaptureDeviceInput deviceInputWithDevice:d error:&e]:nil;if(i){[self.session beginConfiguration];AVCaptureDeviceInput *old=self.cameraInput;if(old.device.position==AVCaptureDevicePositionBack)self.rememberedBackZoom=MCZoomDisplay(old.device.videoZoomFactor,[self wideReferenceForDevice:old.device]);[self.session removeInput:old];if([self.session canAddInput:i]){[self.session addInput:i];self.cameraInput=i;}else[self.session addInput:old];[self configureLiveMode];[self applyConnections];[self.session commitConfiguration];if(self.cameraInput==i)[self configureZoomForCurrentDevice:p==AVCaptureDevicePositionBack?self.rememberedBackZoom:1];}dispatch_async(dispatch_get_main_queue(),^{self.busy=NO;[self updateControls];if(e)[self alert:@"切换失败" message:e.localizedDescription];});});
 }
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gesture shouldReceiveTouch:(UITouch *)touch {
  UIView *view=touch.view;while(view&&view!=self.stage){if([view isKindOfClass:UIControl.class])return NO;view=view.superview;}return YES;
 }
 - (void)focus:(UITapGestureRecognizer *)g {
- if(self.busy||self.recording||!self.configured)return;CGPoint pt=[g locationInView:self.stage];CGFloat u=pt.x/MAX(1,self.stage.bounds.size.width),v=pt.y/MAX(1,self.stage.bounds.size.height);BOOL mirrored=self.cameraInput.device.position==AVCaptureDevicePositionFront&&[self.activeSettings[@"mirrorFront"] boolValue];if(mirrored)u=1-u;CGPoint p;switch(self.captureOrientation){case AVCaptureVideoOrientationLandscapeRight:p=CGPointMake(u,v);break;case AVCaptureVideoOrientationLandscapeLeft:p=CGPointMake(1-u,1-v);break;case AVCaptureVideoOrientationPortraitUpsideDown:p=CGPointMake(1-v,u);break;default:p=CGPointMake(v,1-u);break;}
+ if(self.busy||self.recording||!self.configured)return;CGPoint pt=[g locationInView:self.stage];CGPoint p=[self.nativePreview captureDevicePointOfInterestForPoint:pt];
  UIView *ring=[[UIView alloc]initWithFrame:CGRectMake(pt.x-25,pt.y-25,50,50)];ring.layer.borderColor=MCAccent().CGColor;ring.layer.borderWidth=1.3;ring.layer.cornerRadius=10;[self.stage addSubview:ring];[UIView animateWithDuration:.7 delay:.5 options:0 animations:^{ring.alpha=0;} completion:^(BOOL f){[ring removeFromSuperview];}];
  dispatch_async(self.sessionQueue,^{AVCaptureDevice *d=self.cameraInput.device;NSError *e=nil;if([d lockForConfiguration:&e]){if(d.focusPointOfInterestSupported&&[d isFocusModeSupported:AVCaptureFocusModeAutoFocus]){d.focusPointOfInterest=p;d.focusMode=AVCaptureFocusModeAutoFocus;}if(d.exposurePointOfInterestSupported&&[d isExposureModeSupported:AVCaptureExposureModeContinuousAutoExposure]){d.exposurePointOfInterest=p;d.exposureMode=AVCaptureExposureModeContinuousAutoExposure;}[d unlockForConfiguration];}});
 }
+- (void)showZoom:(CGFloat)zoom {
+ self.zoomSlider.value=zoom;self.zoomLabel.text=[NSString stringWithFormat:@"%.1f×",zoom];self.zoomSlider.accessibilityValue=self.zoomLabel.text;
+ self.lensSelector.selectedSegmentIndex=UISegmentedControlNoSegment;for(NSUInteger i=0;i<self.lensFactors.count;i++)if(fabs(self.lensFactors[i].doubleValue-zoom)<.055){self.lensSelector.selectedSegmentIndex=i;break;}
+}
 - (void)refreshZoomUI {
- dispatch_async(self.sessionQueue,^{AVCaptureDevice *d=self.cameraInput.device;CGFloat lo=MAX(1,d.minAvailableVideoZoomFactor),hi=MAX(lo,MIN(8,d.maxAvailableVideoZoomFactor)),z=d.videoZoomFactor;
- dispatch_async(dispatch_get_main_queue(),^{self.zoomSlider.minimumValue=lo;self.zoomSlider.maximumValue=hi;self.zoomSlider.value=MAX(lo,MIN(hi,z));self.zoomLabel.text=[NSString stringWithFormat:@"%.1f×",self.zoomSlider.value];self.zoomSlider.accessibilityValue=self.zoomLabel.text;});});
+ dispatch_async(self.sessionQueue,^{AVCaptureDevice *d=self.cameraInput.device;if(!d)return;CGFloat ref=[self wideReferenceForDevice:d],lo=MCZoomDisplay(d.minAvailableVideoZoomFactor,ref),hi=MAX(lo,MIN(8,MCZoomDisplay(d.maxAvailableVideoZoomFactor,ref))),z=MCZoomDisplay(d.videoZoomFactor,ref);
+ NSMutableArray<NSNumber *> *values=[NSMutableArray new];BOOL ultra=NO;for(AVCaptureDevice *part in d.constituentDevices)if([part.deviceType isEqual:AVCaptureDeviceTypeBuiltInUltraWideCamera])ultra=YES;
+ if(ultra&&lo<.9)[values addObject:@(lo)];if(lo<=1&&hi>=1)[values addObject:@1];if(lo<=2&&hi>=2)[values addObject:@2];
+ for(NSNumber *factor in d.virtualDeviceSwitchOverVideoZoomFactors){double v=MCZoomDisplay(factor.doubleValue,ref);BOOL duplicate=NO;for(NSNumber *n in values)if(fabs(n.doubleValue-v)<.05)duplicate=YES;if(!duplicate&&v>2.1&&v<=hi&&values.count<4)[values addObject:@(v)];}if(!values.count)[values addObject:@(lo)];
+ dispatch_async(dispatch_get_main_queue(),^{self.zoomSlider.minimumValue=lo;self.zoomSlider.maximumValue=hi;
+ if(![self.lensFactors isEqual:values]){self.lensFactors=values;[self.lensSelector removeAllSegments];for(NSUInteger i=0;i<values.count;i++){double value=values[i].doubleValue;NSString *title=fabs(value-round(value))<.05?[NSString stringWithFormat:@"%.0f×",value]:[NSString stringWithFormat:@"%.1f×",value];[self.lensSelector insertSegmentWithTitle:title atIndex:i animated:NO];}[self.view setNeedsLayout];}
+ if(!self.zoomPending)[self showZoom:MAX(lo,MIN(hi,z))];});});
+}
+- (void)drainZoom {
+ dispatch_async(self.sessionQueue,^{CGFloat display=self.requestedZoom;NSError *error=nil;
+ BOOL applied=[self applyDisplayZoom:display error:&error];
+ dispatch_async(dispatch_get_main_queue(),^{if(applied&&fabs(self.requestedZoom-display)>.001&&!self.busy&&!self.recording){[self drainZoom];return;}self.zoomPending=NO;[self refreshZoomUI];if(error)[self status:@"当前镜头倍率不可用，请重试"];});});
 }
 - (void)setZoomFactor:(CGFloat)factor {
- if(self.busy||self.recording||!isfinite(factor))return;dispatch_async(self.sessionQueue,^{AVCaptureDevice *d=self.cameraInput.device;NSError *error=nil;if([d lockForConfiguration:&error]){d.videoZoomFactor=MAX(MAX(1,d.minAvailableVideoZoomFactor),MIN(MIN(d.maxAvailableVideoZoomFactor,8),factor));[d unlockForConfiguration];}[self refreshZoomUI];});
+ if(self.busy||self.recording||!self.configured||!isfinite(factor))return;self.requestedZoom=MAX(self.zoomSlider.minimumValue,MIN(self.zoomSlider.maximumValue,factor));[self showZoom:self.requestedZoom];
+ if(self.zoomPending)return;self.zoomPending=YES;[self drainZoom];
 }
+- (void)lensChanged:(UISegmentedControl *)control {NSInteger i=control.selectedSegmentIndex;if(i>=0&&i<(NSInteger)self.lensFactors.count)[self setZoomFactor:self.lensFactors[i].doubleValue];}
 - (void)zoomSliderChanged:(UISlider *)slider { [self setZoomFactor:slider.value]; }
 - (void)zoom:(UIPinchGestureRecognizer *)g {
  if(self.busy||self.recording)return;if(g.state==UIGestureRecognizerStateBegan)self.zoomStart=self.zoomSlider.value;[self setZoomFactor:self.zoomStart*g.scale];
@@ -251,24 +319,58 @@ static NSString *MCID(void){return NSUUID.UUID.UUIDString;}
  AVCaptureDevice *d=self.cameraInput.device;id raw=self.activeSettings[@"exposureBias"];float value=[raw isKindOfClass:NSNumber.class]?[raw floatValue]:0;if(!isfinite(value))value=0;value=MAX(-2,MIN(2,value));NSError *e=nil;if(d&&[d lockForConfiguration:&e]){float target=MAX(d.minExposureTargetBias,MIN(d.maxExposureTargetBias,value));if(fabs(d.exposureTargetBias-target)>.01)[d setExposureTargetBias:target completionHandler:nil];[d unlockForConfiguration];}
 }
 - (void)captureOutput:(AVCaptureOutput *)output didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer fromConnection:(AVCaptureConnection *)connection {
- @autoreleasepool {CFTimeInterval now=CACurrentMediaTime();if(now-self.lastFrameAt<1./20||self.inBackground||self.framePending)return;self.lastFrameAt=now;CVPixelBufferRef pixel=CMSampleBufferGetImageBuffer(sampleBuffer);if(!pixel)return;CIImage *source=[CIImage imageWithCVPixelBuffer:pixel];CGFloat scale=MIN(1.,720./MAX(source.extent.size.width,source.extent.size.height));source=[source imageByApplyingTransform:CGAffineTransformMakeScale(scale,scale)];NSDictionary *settings=self.activeSettings;CIImage *toned=[[WMEngine shared]applyTone:source settings:settings];CGImageRef cg=[self.ciContext createCGImage:toned fromRect:source.extent];if(!cg)return;UIImage *frame=[UIImage imageWithCGImage:cg];CGImageRelease(cg);CGImageRef rawCG=[self.ciContext createCGImage:source fromRect:source.extent];UIImage *raw=rawCG?[UIImage imageWithCGImage:rawCG]:frame;if(rawCG)CGImageRelease(rawCG);
- self.framePending=YES;dispatch_async(dispatch_get_main_queue(),^{self.framePending=NO;if(self.editorShown||self.inBackground)return;self.lastFrame=frame;self.lastRawFrame=raw;self.preview.image=frame;if(fabs(self.feedSize.width/MAX(1,self.feedSize.height)-frame.size.width/MAX(1,frame.size.height))>.005){self.feedSize=frame.size;[self.view setNeedsLayout];[self.view layoutIfNeeded];[self updateOverlay];}});}
+ @autoreleasepool{
+ if(self.inBackground||self.editorShown)return;CVPixelBufferRef pixel=CMSampleBufferGetImageBuffer(sampleBuffer);if(!pixel)return;
+ // No 20fps gate, no per-frame UIImage/CGImage conversion, no per-frame main dispatch.
+ double width=CVPixelBufferGetWidth(pixel),height=CVPixelBufferGetHeight(pixel),aspect=width/MAX(1,height);
+ if(fabs(self.expectedAspect-aspect)>.005&&!self.previewGeometryPending){self.previewGeometryPending=YES;AVCaptureVideoOrientation orientation=connection.videoOrientation;
+ dispatch_async(dispatch_get_main_queue(),^{self.previewGeometryPending=NO;if(orientation!=self.captureOrientation)return;self.expectedAspect=aspect;self.feedSize=CGSizeMake(width,height);[self.view setNeedsLayout];});}
+ [self.preview submitPixelBuffer:pixel];
+ }
+}
+- (BOOL)toneIsActive {
+ NSDictionary *tone=self.activeSettings[@"tone"];
+ return fabs([tone[@"brightness"]doubleValue])>.001||fabs(tone[@"contrast"]?[tone[@"contrast"]doubleValue]-1:0)>.001||fabs(tone[@"saturation"]?[tone[@"saturation"]doubleValue]-1:0)>.001||fabs([tone[@"warmth"]doubleValue])>.001;
+}
+- (void)updatePreviewRoute {
+ BOOL toned=[self toneIsActive];BOOL gpu=toned&&![self.activeSettings[@"smoothPreview"]boolValue]&&self.preview.available&&!self.gpuFailed&&!self.nativeVideoPreview;
+ BOOL active=!self.inBackground&&!self.applicationInactive&&!self.editorShown;
+ if(self.preview.renderingEnabled!=(gpu&&active)){[self.preview reset];self.preview.renderingEnabled=gpu&&active;}
+ self.preview.settings=self.activeSettings;self.preview.hidden=!gpu;
+ // Keep the system preview connected underneath, including focus coordinate mapping.
+ self.nativePreview.hidden=NO;
+ self.previewHint.text=gpu?@"GPU 实时调色":(toned?@"流畅取景 · 调色在成片应用":@"系统流畅取景");
 }
 - (void)refreshSettings {
- self.activeSettings=[[WMEngine shared]snapshot];self.gridView.grid=[self.activeSettings[@"gridEnabled"]boolValue];[self.gridView setNeedsDisplay];[self.watermarkButton setTitle:[self.activeSettings[@"watermarkEnabled"]boolValue]?@"水印开启":@"水印关闭" forState:UIControlStateNormal];[self updateOverlay];[self refreshLiveUI];if(self.configured)dispatch_async(self.sessionQueue,^{[self.session beginConfiguration];[self configureLiveMode];[self applyConnections];[self.session commitConfiguration];});
+ NSDictionary *old=self.activeSettings;self.activeSettings=[[WMEngine shared]snapshot];self.gridView.grid=[self.activeSettings[@"gridEnabled"]boolValue];[self.gridView setNeedsDisplay];[self.watermarkButton setTitle:[self.activeSettings[@"watermarkEnabled"]boolValue]?@"水印开":@"水印关" forState:UIControlStateNormal];[self invalidateOverlay];[self refreshLiveUI];[self updatePreviewRoute];
+ if(!self.configured||self.editorShown)return;
+ BOOL liveChanged=[old[@"livePhotoEnabled"]boolValue]!=[self.activeSettings[@"livePhotoEnabled"]boolValue];
+ BOOL connectionsChanged=!old||[old[@"mirrorFront"]boolValue]!=[self.activeSettings[@"mirrorFront"]boolValue]||[old[@"exposureBias"]doubleValue]!=[self.activeSettings[@"exposureBias"]doubleValue];
+ if(liveChanged||connectionsChanged)dispatch_async(self.sessionQueue,^{if(liveChanged)[self.session beginConfiguration];if(liveChanged)[self configureLiveMode];[self applyConnections];if(liveChanged)[self.session commitConfiguration];});
 }
+- (void)invalidateOverlay {self.overlayRevision++;[self updateOverlay];}
 - (void)updateOverlay {
- CGSize s=self.stage.bounds.size;if(s.width<1||s.height<1)return;CGFloat z=MIN(2,720./MAX(s.width,s.height));s=CGSizeMake(s.width*z,s.height*z);self.overlay.image=[[WMEngine shared]overlayForSize:s settings:self.recording?self.captureSettings:self.activeSettings date:self.recording?self.recordDate:NSDate.date];
+ if(self.inBackground||self.editorShown)return;CGSize s=self.stage.bounds.size;if(s.width<1||s.height<1)return;
+ NSDictionary *settings=self.recording?self.captureSettings:self.activeSettings;NSDate *date=self.recording?self.recordDate:NSDate.date;
+ if(![settings[@"watermarkEnabled"]boolValue]){self.overlay.image=nil;self.overlayKey=nil;return;}
+ if(self.overlayPending)return;
+ CGFloat z=MIN(2,1024./MAX(s.width,s.height));s=CGSizeMake(round(s.width*z),round(s.height*z));NSString *clock=@"static";
+ for(NSDictionary *layer in settings[@"layers"]){NSString *text=layer[@"text"];if([text containsString:@"{time}"]){clock=[NSString stringWithFormat:@"%.0f",floor(date.timeIntervalSince1970)];break;}if([text containsString:@"{date}"]){NSDateComponents *c=[NSCalendar.currentCalendar components:NSCalendarUnitYear|NSCalendarUnitMonth|NSCalendarUnitDay fromDate:date];clock=[NSString stringWithFormat:@"%ld-%ld-%ld",(long)c.year,(long)c.month,(long)c.day];}}
+ NSDictionary *key=@{@"revision":@(self.overlayRevision),@"size":NSStringFromCGSize(s),@"clock":clock};if([key isEqual:self.overlayKey])return;
+ self.overlayPending=YES;NSUInteger revision=self.overlayRevision;
+ dispatch_async(self.overlayQueue,^{@autoreleasepool{UIImage *image=[[WMEngine shared]overlayForSize:s settings:settings date:date];dispatch_async(dispatch_get_main_queue(),^{self.overlayPending=NO;if(revision!=self.overlayRevision){[self updateOverlay];return;}if(!self.inBackground&&!self.editorShown){self.overlay.image=image;self.overlayKey=key;}});}});
 }
 - (void)toggleWatermark {if(self.busy||self.recording)return;WMEngine *e=WMEngine.shared;e.settings[@"watermarkEnabled"]=@(![e.settings[@"watermarkEnabled"]boolValue]);[e save];[self refreshSettings];}
 - (void)openSettings { [self presentEditorAtSettings:YES]; }
 - (void)openEditor { [self presentEditorAtSettings:NO]; }
 - (void)presentEditorAtSettings:(BOOL)settings {
- if(self.busy||self.recording)return;self.editorShown=YES;dispatch_async(self.sessionQueue,^{[self.session stopRunning];});WMEditorViewController *e=[WMEditorViewController new];e.opensSettings=settings;e.backgroundImage=self.nativeVideoPreview?nil:self.lastRawFrame;__weak typeof(self) weak=self;e.onChange=^{[weak refreshSettings];};UINavigationController *nav=[[UINavigationController alloc]initWithRootViewController:e];nav.modalPresentationStyle=UIModalPresentationFullScreen;[self presentViewController:nav animated:YES completion:nil];
+ if(self.busy||self.recording)return;self.busy=YES;[self updateControls];__weak typeof(self) weak=self;
+ [self.preview requestSnapshot:^(UIImage *image){CameraViewController *camera=weak;if(!camera)return;camera.busy=NO;if(camera.inBackground){[camera updateControls];return;}camera.editorShown=YES;[camera updatePreviewRoute];dispatch_async(camera.sessionQueue,^{[camera.session stopRunning];});
+ WMEditorViewController *e=[WMEditorViewController new];e.opensSettings=settings;e.backgroundImage=image;e.onChange=^{[weak refreshSettings];};UINavigationController *nav=[[UINavigationController alloc]initWithRootViewController:e];nav.modalPresentationStyle=UIModalPresentationFullScreen;[camera presentViewController:nav animated:YES completion:nil];[camera updateControls];}];
 }
-- (void)viewDidAppear:(BOOL)animated {[super viewDidAppear:animated];if(self.editorShown&&!self.presentedViewController){self.editorShown=NO;[self refreshSettings];dispatch_async(self.sessionQueue,^{if(self.configured&&!self.inBackground)[self.session startRunning];});}}
+- (void)viewDidAppear:(BOOL)animated {[super viewDidAppear:animated];if(self.editorShown&&!self.presentedViewController){self.editorShown=NO;self.gpuFailed=NO;[self refreshSettings];dispatch_async(self.sessionQueue,^{if(self.configured&&!self.inBackground){[self.session beginConfiguration];[self configureLiveMode];[self applyConnections];[self.session commitConfiguration];[self.session startRunning];}});}}
 - (void)updateControls {
- BOOL locked=self.busy||self.recording;self.zoomSlider.enabled=!locked&&self.configured;self.settingsButton.enabled=!locked;[self refreshLiveUI];if(!locked)[self refreshZoomUI];self.mode.enabled=!locked;self.switchButton.enabled=!locked&&self.configured;self.editButton.enabled=!locked;self.filesButton.enabled=!locked;self.watermarkButton.enabled=!locked;self.shutter.enabled=self.configured&&(!self.busy||self.recording)&&!self.inBackground;
+ BOOL locked=self.busy||self.recording;self.zoomSlider.enabled=!locked&&self.configured;self.lensSelector.enabled=!locked&&self.configured;self.settingsButton.enabled=!locked;[self refreshLiveUI];if(!locked)[self refreshZoomUI];self.mode.enabled=!locked;self.switchButton.enabled=!locked&&self.configured;self.editButton.enabled=!locked;self.filesButton.enabled=!locked;self.watermarkButton.enabled=!locked;self.shutter.enabled=self.configured&&(!self.busy||self.recording)&&!self.inBackground;
  self.shutter.backgroundColor=self.wantsVideo?UIColor.systemRedColor:UIColor.whiteColor;[self.shutter setTitle:self.recording?@"■":@"" forState:UIControlStateNormal];[self.shutter setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];self.shutter.accessibilityLabel=self.recording?@"停止录像":(self.wantsVideo?@"开始录像":@"拍照");UIApplication.sharedApplication.idleTimerDisabled=self.busy||self.recording;
 }
 - (NSURL *)pendingDirectory {
@@ -364,7 +466,7 @@ static NSString *MCID(void){return NSUUID.UUID.UUIDString;}
  if(!self.photoProcessed){self.photoProcessed=YES;dispatch_async(dispatch_get_main_queue(),^{self.busy=NO;[self updateControls];[self alert:@"拍摄未完成" message:error.localizedDescription?:@"系统没有返回照片，请重试。"];});}
 }
 - (void)captureOutput:(AVCaptureFileOutput *)output didStartRecordingToOutputFileAtURL:(NSURL *)url fromConnections:(NSArray<AVCaptureConnection *> *)connections {
- dispatch_async(dispatch_get_main_queue(),^{self.recording=YES;self.recordDate=self.captureDate;[self updateControls];[self updateOverlay];[self status:@"录制中 · 点击停止后自动合成"];if(self.inBackground)[self.movieOutput stopRecording];});
+ dispatch_async(dispatch_get_main_queue(),^{self.recording=YES;self.recordDate=self.captureDate;[self updateControls];[self invalidateOverlay];[self status:@"录制中 · 点击停止后自动合成"];if(self.inBackground)[self.movieOutput stopRecording];});
 }
 - (void)captureOutput:(AVCaptureFileOutput *)output didFinishRecordingToOutputFileAtURL:(NSURL *)url fromConnections:(NSArray<AVCaptureConnection *> *)connections error:(NSError *)error {
  dispatch_async(self.sessionQueue,^{AVCaptureDevice *d=self.cameraInput.device;NSError *e=nil;if(d.hasTorch&&[d lockForConfiguration:&e]){d.torchMode=AVCaptureTorchModeOff;[d unlockForConfiguration];}});
@@ -428,11 +530,13 @@ static NSString *MCID(void){return NSUUID.UUID.UUIDString;}
 - (void)tick {
  if(self.recording){NSInteger sec=(NSInteger)(-[self.recordDate timeIntervalSinceNow]);self.recordLabel.text=[NSString stringWithFormat:@"● %02ld:%02ld",(long)(sec/60),(long)(sec%60)];}else if(!self.busy&&!self.editorShown&&!self.inBackground)[self updateOverlay];if(self.exportSession)self.progress.progress=self.exportSession.progress;if(self.liveProcessor)self.progress.progress=self.liveProcessor.progress;
 }
+- (void)willResignActive:(NSNotification *)notification {self.applicationInactive=YES;[self updatePreviewRoute];}
+- (void)didBecomeActive:(NSNotification *)notification {self.applicationInactive=NO;[self updatePreviewRoute];}
 - (void)background:(NSNotification *)n {
- self.inBackground=YES;self.countdownGeneration++;if(self.countdownLabel.text.length){self.countdownLabel.text=@"";self.busy=NO;}[self.exportSession cancelExport];[self.liveProcessor cancel];dispatch_async(self.sessionQueue,^{if(self.movieOutput.isRecording)[self.movieOutput stopRecording];[self.session stopRunning];});[self updateControls];UIApplication.sharedApplication.idleTimerDisabled=NO;
+ self.inBackground=YES;[self updatePreviewRoute];self.countdownGeneration++;if(self.countdownLabel.text.length){self.countdownLabel.text=@"";self.busy=NO;}[self.exportSession cancelExport];[self.liveProcessor cancel];dispatch_async(self.sessionQueue,^{if(self.movieOutput.isRecording)[self.movieOutput stopRecording];[self.session stopRunning];});[self updateControls];UIApplication.sharedApplication.idleTimerDisabled=NO;
 }
 - (void)foreground:(NSNotification *)n {
- self.inBackground=NO;[self refreshSettings];if(!self.configured){[self requestCamera];return;}dispatch_async(self.sessionQueue,^{if(!self.editorShown)[self.session startRunning];});[self updateControls];
+ self.inBackground=NO;self.gpuFailed=NO;[self refreshSettings];if(!self.configured){[self requestCamera];return;}dispatch_async(self.sessionQueue,^{if(!self.editorShown){[self.session beginConfiguration];[self configureLiveMode];[self applyConnections];[self.session commitConfiguration];[self.session startRunning];}});[self updateControls];
 }
 - (void)interrupted:(NSNotification *)n {[self status:@"相机暂时被系统中断，录像原片将保留"];}
 - (void)interruptionEnded:(NSNotification *)n {dispatch_async(self.sessionQueue,^{if(!self.inBackground&&!self.editorShown)[self.session startRunning];});[self status:@"相机已恢复"];}
