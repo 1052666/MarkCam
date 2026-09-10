@@ -13,7 +13,7 @@ assert positive.returncode==0,positive.stderr
 text=source.read_text();marker='@implementation CameraViewController'
 head,body=text.split(marker,1)
 old='- (void)captureOutput:(AVCapturePhotoOutput *)output didFinish'
-assert body.count(old)==2
+assert body.count(old)==3
 broken=head+marker+body.replace(old,'- (void)photoOutput:(AVCapturePhotoOutput *)output didFinish')
 with tempfile.TemporaryDirectory(prefix='markcam-negative-') as tmp:
     p=pathlib.Path(tmp)/'CameraViewController.m';p.write_text(broken)
@@ -21,7 +21,8 @@ with tempfile.TemporaryDirectory(prefix='markcam-negative-') as tmp:
     assert negative.returncode!=0,'Negative control must fail'
     assert "method 'captureOutput:didFinishProcessingPhoto:error:'" in negative.stderr
     assert "method 'captureOutput:didFinishCaptureForResolvedSettings:error:'" in negative.stderr
-report={'scope':'Compile-only positive/negative regression; not device testing','fixed_source_compiles':True,'old_typo_rejected_by_compiler':True,'missing_processing_callback_reported':True,'missing_completion_callback_reported':True}
+    assert "method 'captureOutput:didFinishProcessingLivePhotoToMovieFileAtURL:duration:photoDisplayTime:resolvedSettings:error:'" in negative.stderr
+report={'scope':'Compile-only positive/negative regression; not device testing','fixed_source_compiles':True,'old_typo_rejected_by_compiler':True,'missing_processing_callback_reported':True,'missing_completion_callback_reported':True,'missing_live_callback_reported':True}
 (ROOT/'dist').mkdir(exist_ok=True)
 (ROOT/'dist/selector-regression-report.json').write_text(json.dumps(report,indent=2)+'\n')
 print(json.dumps(report,indent=2))

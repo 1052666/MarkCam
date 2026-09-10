@@ -1,6 +1,7 @@
 #import "CameraViewController.h"
 #import "WMEngine.h"
 #import "WMEditorViewController.h"
+#import "MCLivePhotoProcessor.h"
 #import <AVFoundation/AVFoundation.h>
 #import <Photos/Photos.h>
 #import <CoreImage/CoreImage.h>
@@ -20,8 +21,9 @@ static NSString *MCID(void){return NSUUID.UUID.UUIDString;}
 @required
 - (void)captureOutput:(AVCapturePhotoOutput *)output didFinishProcessingPhoto:(AVCapturePhoto *)photo error:(NSError *)error;
 - (void)captureOutput:(AVCapturePhotoOutput *)output didFinishCaptureForResolvedSettings:(AVCaptureResolvedPhotoSettings *)resolvedSettings error:(NSError *)error;
+- (void)captureOutput:(AVCapturePhotoOutput *)output didFinishProcessingLivePhotoToMovieFileAtURL:(NSURL *)url duration:(CMTime)duration photoDisplayTime:(CMTime)photoDisplayTime resolvedSettings:(AVCaptureResolvedPhotoSettings *)resolvedSettings error:(NSError *)error;
 @end
-@interface CameraViewController ()<AVCaptureVideoDataOutputSampleBufferDelegate,MCPhotoCaptureContract,AVCaptureFileOutputRecordingDelegate>
+@interface CameraViewController ()<AVCaptureVideoDataOutputSampleBufferDelegate,MCPhotoCaptureContract,AVCaptureFileOutputRecordingDelegate,UIGestureRecognizerDelegate>
 @property(nonatomic,strong) AVCaptureSession *session;
 @property(nonatomic,strong) AVCaptureDeviceInput *cameraInput;
 @property(nonatomic,strong) AVCaptureDeviceInput *audioInput;
@@ -47,8 +49,19 @@ static NSString *MCID(void){return NSUUID.UUID.UUIDString;}
 @property(nonatomic,strong) UIButton *editButton;
 @property(nonatomic,strong) UIButton *filesButton;
 @property(nonatomic,strong) UIButton *watermarkButton;
-@property(nonatomic,strong) UISlider *exposureSlider;
-@property(nonatomic,strong) UILabel *exposureLabel;
+@property(nonatomic,strong) UIButton *settingsButton;
+@property(nonatomic,strong) UIButton *liveButton;
+@property(nonatomic,strong) UISlider *zoomSlider;
+@property(nonatomic,strong) UILabel *zoomLabel;
+@property(nonatomic,strong) MCLivePhotoProcessor *liveProcessor;
+@property(atomic) BOOL liveSupported;
+@property(atomic) BOOL capturingLive;
+@property(atomic,strong) NSURL *captureLiveMeta;
+@property(atomic,strong) NSDictionary *captureLiveJob;
+// These three capture result flags are confined to the serial renderQueue.
+@property(nonatomic,strong) NSError *liveCaptureError;
+@property(nonatomic) BOOL livePhotoWritten;
+@property(nonatomic) BOOL liveMovieWritten;
 @property(nonatomic,strong) UISegmentedControl *mode;
 @property(nonatomic,strong) UIProgressView *progress;
 @property(nonatomic,strong) UIButton *cancelExportButton;
@@ -95,14 +108,16 @@ static NSString *MCID(void){return NSUUID.UUID.UUIDString;}
 - (void)makeUI {
  self.titleLabel=[UILabel new];self.titleLabel.text=@"印记相机  /  MARK";self.titleLabel.font=[UIFont systemFontOfSize:21 weight:UIFontWeightBold];self.titleLabel.textColor=UIColor.whiteColor;[self.view addSubview:self.titleLabel];
  self.watermarkButton=[self button:@"水印开启" action:@selector(toggleWatermark)];
+ self.liveButton=[self button:@"LIVE 关" action:@selector(toggleLive)];self.liveButton.accessibilityLabel=@"实况照片开关";
+ self.settingsButton=[self button:@"设置" action:@selector(openSettings)];self.settingsButton.accessibilityLabel=@"打开相机设置，曝光和实况照片";
  self.stage=[UIView new];self.stage.backgroundColor=UIColor.blackColor;self.stage.layer.cornerRadius=20;self.stage.clipsToBounds=YES;[self.view addSubview:self.stage];
  self.preview=[UIImageView new];self.preview.contentMode=UIViewContentModeScaleAspectFit;[self.stage addSubview:self.preview];
  self.nativePreview=[AVCaptureVideoPreviewLayer layerWithSession:self.session];self.nativePreview.videoGravity=AVLayerVideoGravityResizeAspect;self.nativePreview.hidden=YES;[self.stage.layer insertSublayer:self.nativePreview atIndex:0];
  self.overlay=[UIImageView new];self.overlay.contentMode=UIViewContentModeScaleToFill;self.overlay.userInteractionEnabled=NO;[self.stage addSubview:self.overlay];
  self.gridView=[MCGridView new];self.gridView.backgroundColor=UIColor.clearColor;self.gridView.userInteractionEnabled=NO;[self.stage addSubview:self.gridView];
- self.exposureSlider=[UISlider new];self.exposureSlider.minimumValue=-2;self.exposureSlider.maximumValue=2;self.exposureSlider.tintColor=MCAccent();self.exposureSlider.accessibilityLabel=@"曝光补偿，负二至正二档";[self.exposureSlider addTarget:self action:@selector(exposureChanged:) forControlEvents:UIControlEventValueChanged];[self.stage addSubview:self.exposureSlider];
- self.exposureLabel=[UILabel new];self.exposureLabel.text=@"EV 0.0";self.exposureLabel.textColor=UIColor.whiteColor;self.exposureLabel.font=[UIFont monospacedDigitSystemFontOfSize:11 weight:UIFontWeightMedium];[self.stage addSubview:self.exposureLabel];
- UITapGestureRecognizer *tap=[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(focus:)];[self.stage addGestureRecognizer:tap];UIPinchGestureRecognizer *pinch=[[UIPinchGestureRecognizer alloc]initWithTarget:self action:@selector(zoom:)];[self.stage addGestureRecognizer:pinch];
+ self.zoomSlider=[UISlider new];self.zoomSlider.minimumValue=1;self.zoomSlider.maximumValue=8;self.zoomSlider.value=1;self.zoomSlider.tintColor=MCAccent();self.zoomSlider.accessibilityLabel=@"相机缩放倍率";[self.zoomSlider addTarget:self action:@selector(zoomSliderChanged:) forControlEvents:UIControlEventValueChanged];[self.stage addSubview:self.zoomSlider];
+ self.zoomLabel=[UILabel new];self.zoomLabel.text=@"1.0×";self.zoomLabel.textColor=UIColor.whiteColor;self.zoomLabel.font=[UIFont monospacedDigitSystemFontOfSize:13 weight:UIFontWeightMedium];[self.stage addSubview:self.zoomLabel];
+ UITapGestureRecognizer *tap=[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(focus:)];tap.delegate=self;[self.stage addGestureRecognizer:tap];UIPinchGestureRecognizer *pinch=[[UIPinchGestureRecognizer alloc]initWithTarget:self action:@selector(zoom:)];pinch.delegate=self;[self.stage addGestureRecognizer:pinch];
  self.recordLabel=[UILabel new];self.recordLabel.textColor=UIColor.systemRedColor;self.recordLabel.font=[UIFont monospacedDigitSystemFontOfSize:15 weight:UIFontWeightSemibold];self.recordLabel.textAlignment=NSTextAlignmentCenter;[self.stage addSubview:self.recordLabel];
  self.countdownLabel=[UILabel new];self.countdownLabel.font=[UIFont systemFontOfSize:68 weight:UIFontWeightLight];self.countdownLabel.textColor=UIColor.whiteColor;self.countdownLabel.textAlignment=NSTextAlignmentCenter;[self.stage addSubview:self.countdownLabel];
  self.statusLabel=[UILabel new];self.statusLabel.numberOfLines=2;self.statusLabel.textAlignment=NSTextAlignmentCenter;self.statusLabel.font=[UIFont systemFontOfSize:12 weight:UIFontWeightMedium];self.statusLabel.textColor=[UIColor colorWithWhite:.72 alpha:1];[self.view addSubview:self.statusLabel];
@@ -118,7 +133,9 @@ static NSString *MCID(void){return NSUUID.UUID.UUIDString;}
  if(landscape){self.titleLabel.frame=CGRectMake(s.left+16,s.top+8,w-s.left-s.right-210,32);self.watermarkButton.frame=CGRectMake(w-s.right-130,s.top+7,114,34);CGFloat availH=h-s.top-s.bottom-84,availW=w-s.left-s.right-174;CGFloat ratio=self.feedSize.width/MAX(1,self.feedSize.height);CGSize fs=CGSizeMake(MIN(availW,availH*ratio),0);fs.height=fs.width/ratio;self.stage.frame=CGRectMake(s.left+12+(availW-fs.width)/2,s.top+48+(availH-fs.height)/2,fs.width,fs.height);CGFloat x=w-s.right-148;self.mode.frame=CGRectMake(x,s.top+52,134,30);self.shutter.frame=CGRectMake(x+35,s.top+90,64,64);self.filesButton.frame=CGRectMake(x,s.top+163,64,35);self.switchButton.frame=CGRectMake(x+70,s.top+163,64,35);self.editButton.frame=CGRectMake(x,s.top+207,134,40);self.editButton.titleLabel.font=[UIFont systemFontOfSize:12 weight:UIFontWeightSemibold];self.statusLabel.frame=CGRectMake(s.left+16,h-s.bottom-34,availW,30);
  }else{self.titleLabel.frame=CGRectMake(20,s.top+8,w-155,36);self.watermarkButton.frame=CGRectMake(w-124,s.top+8,104,34);CGFloat top=s.top+58,availH=h-s.bottom-top-200,availW=w-24;CGFloat ratio=self.feedSize.width/MAX(1,self.feedSize.height);CGFloat fw=MIN(availW,availH*ratio),fh=fw/ratio;self.stage.frame=CGRectMake((w-fw)/2,top+(availH-fh)/2,fw,fh);CGFloat base=h-s.bottom-185;self.statusLabel.frame=CGRectMake(16,base,w-32,34);self.mode.frame=CGRectMake((w-160)/2,base+40,160,30);self.shutter.frame=CGRectMake((w-70)/2,base+80,70,70);self.filesButton.frame=CGRectMake(26,base+94,84,40);self.switchButton.frame=CGRectMake(w-110,base+94,84,40);self.editButton.frame=CGRectMake((w-220)/2,base+157,220,34);}
  self.shutter.layer.cornerRadius=self.shutter.bounds.size.width/2;self.preview.frame=self.stage.bounds;self.nativePreview.frame=self.stage.bounds;self.overlay.frame=self.stage.bounds;self.gridView.frame=self.stage.bounds;[self.gridView setNeedsDisplay];self.recordLabel.frame=CGRectMake(0,12,self.stage.bounds.size.width,24);self.countdownLabel.frame=self.stage.bounds;
- self.exposureLabel.frame=CGRectMake(12,self.stage.bounds.size.height-33,55,24);self.exposureSlider.frame=CGRectMake(70,self.stage.bounds.size.height-35,MAX(40,self.stage.bounds.size.width-88),28);
+ self.zoomLabel.frame=CGRectMake(12,self.stage.bounds.size.height-40,55,34);self.zoomSlider.frame=CGRectMake(70,self.stage.bounds.size.height-44,MAX(40,self.stage.bounds.size.width-88),44);
+ self.titleLabel.text=@"印记相机";self.titleLabel.font=[UIFont systemFontOfSize:18 weight:UIFontWeightBold];self.titleLabel.frame=CGRectMake(s.left+14,s.top+8,100,36);
+ CGFloat right=w-s.right-12;self.settingsButton.frame=CGRectMake(right-48,s.top+8,48,34);self.liveButton.frame=CGRectMake(right-122,s.top+8,68,34);self.watermarkButton.frame=CGRectMake(right-208,s.top+8,80,34);self.liveButton.titleLabel.font=[UIFont systemFontOfSize:12 weight:UIFontWeightSemibold];self.watermarkButton.titleLabel.font=[UIFont systemFontOfSize:12 weight:UIFontWeightSemibold];
  self.progress.frame=CGRectMake(24,CGRectGetMaxY(self.stage.frame)-5,MAX(50,self.stage.bounds.size.width-24),2);self.cancelExportButton.frame=CGRectMake(CGRectGetMaxX(self.stage.frame)-108,CGRectGetMaxY(self.stage.frame)-44,100,30);
  CGSize os=self.stage.bounds.size;if(!CGSizeEqualToSize(os,self.lastOverlaySize)){self.lastOverlaySize=os;[self updateOverlay];}
 }
@@ -146,9 +163,47 @@ static NSString *MCID(void){return NSUUID.UUID.UUIDString;}
  if([self.session canAddOutput:self.photoOutput])[self.session addOutput:self.photoOutput];
  self.videoOutput=[AVCaptureVideoDataOutput new];self.videoOutput.alwaysDiscardsLateVideoFrames=YES;self.videoOutput.videoSettings=@{(NSString *)kCVPixelBufferPixelFormatTypeKey:@(kCVPixelFormatType_32BGRA)};[self.videoOutput setSampleBufferDelegate:self queue:self.framesQueue];if([self.session canAddOutput:self.videoOutput])[self.session addOutput:self.videoOutput];
  self.movieOutput=[AVCaptureMovieFileOutput new];self.movieOutput.maxRecordedDuration=CMTimeMake(300,1);self.movieOutput.minFreeDiskSpaceLimit=150*1024*1024;
- [self applyConnections];[self.session commitConfiguration];self.configured=YES;if(!self.inBackground&&!self.editorShown)[self.session startRunning];[self status:@"照片模式 · 轻点对焦 / 双指变焦"];dispatch_async(dispatch_get_main_queue(),^{[self updateControls];});});
+ [self configureLiveMode];[self applyConnections];[self.session commitConfiguration];self.configured=YES;if(!self.inBackground&&!self.editorShown)[self.session startRunning];[self status:@"照片模式 · 轻点对焦 / 双指变焦"];dispatch_async(dispatch_get_main_queue(),^{[self updateControls];});});
+}
+- (BOOL)ensureAudioInput {
+ if([AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio]!=AVAuthorizationStatusAuthorized)return NO;
+ if(!self.audioInput){AVCaptureDevice *device=[AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeAudio];NSError *error=nil;if(device)self.audioInput=[AVCaptureDeviceInput deviceInputWithDevice:device error:&error];}
+ if(self.audioInput&&![self.session.inputs containsObject:self.audioInput]&&[self.session canAddInput:self.audioInput])[self.session addInput:self.audioInput];
+ return self.audioInput&&[self.session.inputs containsObject:self.audioInput];
+}
+// Invoke inside begin/commitConfiguration, on sessionQueue, never during capture.
+- (void)configureLiveMode {
+ BOOL photoMode=[self.session.outputs containsObject:self.photoOutput];self.liveSupported=photoMode&&self.photoOutput.isLivePhotoCaptureSupported;
+ if(self.liveSupported){BOOL wanted=[self.activeSettings[@"livePhotoEnabled"]boolValue];
+ @try {
+ if(wanted&&!self.photoOutput.isLivePhotoCaptureEnabled)self.photoOutput.livePhotoCaptureEnabled=YES;
+ if(self.photoOutput.isLivePhotoCaptureEnabled){self.photoOutput.preservesLivePhotoCaptureSuspendedOnSessionStop=YES;
+ if(self.photoOutput.isLivePhotoCaptureSuspended==wanted)self.photoOutput.livePhotoCaptureSuspended=!wanted;}
+ if(wanted)[self ensureAudioInput];else if(self.audioInput&&[self.session.inputs containsObject:self.audioInput])[self.session removeInput:self.audioInput];
+ } @catch(NSException *exception){self.liveSupported=NO;[self status:@"当前配置无法启用 Live Photo，请关闭 LIVE 使用普通照片"];}
+ }else if(photoMode&&self.audioInput&&[self.session.inputs containsObject:self.audioInput]){[self.session removeInput:self.audioInput];}
+ dispatch_async(dispatch_get_main_queue(),^{[self refreshLiveUI];});
+}
+- (void)refreshLiveUI {
+ BOOL on=[self.activeSettings[@"livePhotoEnabled"]boolValue];NSString *title=on?@"LIVE 开":@"LIVE 关";
+ if(!self.liveSupported&&!self.wantsVideo&&self.configured)title=@"LIVE 不支持";
+ [self.liveButton setTitle:title forState:UIControlStateNormal];[self.liveButton setTitleColor:on?UIColor.systemYellowColor:MCAccent() forState:UIControlStateNormal];
+ self.liveButton.enabled=self.configured&&!self.busy&&!self.recording&&!self.wantsVideo;self.liveButton.alpha=self.liveButton.enabled?1:.4;
+}
+- (void)toggleLive {
+ if(self.busy||self.recording||self.wantsVideo)return;BOOL on=[self.activeSettings[@"livePhotoEnabled"]boolValue];
+ if(on){WMEngine.shared.settings[@"livePhotoEnabled"]=@NO;[WMEngine.shared save];[self refreshSettings];return;}
+ if(!self.liveSupported){[self alert:@"当前模式不支持实况" message:@"请尝试切换摄像头。普通照片仍可正常拍摄。"];return;}
+ if(self.liveSupported&&self.liveButton.isEnabled&&![self.activeSettings[@"livePhotoEnabled"]boolValue]){[self authorizeLive:^{WMEngine.shared.settings[@"livePhotoEnabled"]=@YES;[WMEngine.shared save];[self refreshSettings];[self status:@"LIVE 已开启 · 拍摄前后请保持手机稳定"]; }];}
+}
+- (void)authorizeLive:(void (^)(void))completion {
+ AVAuthorizationStatus status=[AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio];
+ if(status==AVAuthorizationStatusAuthorized){completion();return;}
+ if(status!=AVAuthorizationStatusNotDetermined){[self permissionAlert:@"有声 Live Photo 需要麦克风权限；也可关闭 LIVE 拍摄普通照片。"];return;}
+ self.busy=YES;[self updateControls];[AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio completionHandler:^(BOOL ok){dispatch_async(dispatch_get_main_queue(),^{self.busy=NO;[self updateControls];if(ok&&!self.inBackground)completion();else if(!ok)[self permissionAlert:@"未开启麦克风权限，不能拍摄有声 Live Photo。可关闭 LIVE 使用普通照片。"];});}];
 }
 - (void)applyConnections {
+ [self applyExposureSettings];
  BOOL mirror=self.cameraInput.device.position==AVCaptureDevicePositionFront&&[self.activeSettings[@"mirrorFront"] boolValue];
  for(AVCaptureOutput *out in self.session.outputs){AVCaptureConnection *c=[out connectionWithMediaType:AVMediaTypeVideo];if(c.isVideoOrientationSupported)c.videoOrientation=self.captureOrientation;if(c.isVideoMirroringSupported){c.automaticallyAdjustsVideoMirroring=NO;c.videoMirrored=mirror;}}
  AVCaptureVideoOrientation orientation=self.captureOrientation;dispatch_async(dispatch_get_main_queue(),^{AVCaptureConnection *previewConnection=self.nativePreview.connection;if(previewConnection.isVideoOrientationSupported)previewConnection.videoOrientation=orientation;if(previewConnection.isVideoMirroringSupported){previewConnection.automaticallyAdjustsVideoMirroring=NO;previewConnection.videoMirrored=mirror;}if(self.nativeVideoPreview){BOOL portrait=orientation==AVCaptureVideoOrientationPortrait||orientation==AVCaptureVideoOrientationPortraitUpsideDown;self.feedSize=portrait?CGSizeMake(9,16):CGSizeMake(16,9);[self.view setNeedsLayout];}});
@@ -167,40 +222,53 @@ static NSString *MCID(void){return NSUUID.UUID.UUIDString;}
  }else{[self.session removeOutput:self.movieOutput];if(self.audioInput&&[self.session.inputs containsObject:self.audioInput])[self.session removeInput:self.audioInput];self.session.sessionPreset=AVCaptureSessionPresetPhoto;if([self.session canAddOutput:self.photoOutput])[self.session addOutput:self.photoOutput];}
  if(!success){[self.session removeOutput:self.movieOutput];if(self.audioInput&&[self.session.inputs containsObject:self.audioInput])[self.session removeInput:self.audioInput];self.session.sessionPreset=AVCaptureSessionPresetPhoto;if([self.session canAddOutput:self.photoOutput])[self.session addOutput:self.photoOutput];}
  if(!video||!success){if(![self.session.outputs containsObject:self.videoOutput]&&[self.session canAddOutput:self.videoOutput])[self.session addOutput:self.videoOutput];}self.nativeVideoPreview=video&&success&&![self.session.outputs containsObject:self.videoOutput];
- [self applyConnections];[self.session commitConfiguration];if(video&&success){AVCaptureDevice *d=self.cameraInput.device;NSError *err=nil;if([d lockForConfiguration:&err]){for(AVFrameRateRange *r in d.activeFormat.videoSupportedFrameRateRanges){if(r.minFrameRate<=30&&r.maxFrameRate>=30){d.activeVideoMinFrameDuration=CMTimeMake(1,30);d.activeVideoMaxFrameDuration=CMTimeMake(1,30);break;}}[d unlockForConfiguration];}}
+ [self configureLiveMode];[self applyConnections];[self.session commitConfiguration];if(video&&success){AVCaptureDevice *d=self.cameraInput.device;NSError *err=nil;if([d lockForConfiguration:&err]){for(AVFrameRateRange *r in d.activeFormat.videoSupportedFrameRateRanges){if(r.minFrameRate<=30&&r.maxFrameRate>=30){d.activeVideoMinFrameDuration=CMTimeMake(1,30);d.activeVideoMaxFrameDuration=CMTimeMake(1,30);break;}}[d unlockForConfiguration];}}
  dispatch_async(dispatch_get_main_queue(),^{self.wantsVideo=video&&success;self.nativePreview.hidden=!self.nativeVideoPreview;self.preview.hidden=self.nativeVideoPreview;self.mode.selectedSegmentIndex=self.wantsVideo?1:0;self.busy=NO;[self updateControls];[self status:success?(video?(self.nativeVideoPreview?@"录像兼容模式 · 水印可见，调色在成片应用":@"1080p · 有声录像 · 单段最长 5 分钟"):@"照片模式 · 原生高画质"):@"当前设备无法启用有声录像"];});});
 }
 - (void)switchCamera {
- if(self.busy||self.recording||!self.configured)return;self.busy=YES;[self updateControls];dispatch_async(self.sessionQueue,^{AVCaptureDevicePosition p=self.cameraInput.device.position==AVCaptureDevicePositionBack?AVCaptureDevicePositionFront:AVCaptureDevicePositionBack;NSError *e=nil;AVCaptureDevice *d=[self deviceForPosition:p];AVCaptureDeviceInput *i=d?[AVCaptureDeviceInput deviceInputWithDevice:d error:&e]:nil;if(i){[self.session beginConfiguration];AVCaptureDeviceInput *old=self.cameraInput;[self.session removeInput:old];if([self.session canAddInput:i]){[self.session addInput:i];self.cameraInput=i;}else[self.session addInput:old];[self applyConnections];[self.session commitConfiguration];}dispatch_async(dispatch_get_main_queue(),^{self.busy=NO;[self updateControls];if(e)[self alert:@"切换失败" message:e.localizedDescription];});});
+ if(self.busy||self.recording||!self.configured)return;self.busy=YES;[self updateControls];dispatch_async(self.sessionQueue,^{AVCaptureDevicePosition p=self.cameraInput.device.position==AVCaptureDevicePositionBack?AVCaptureDevicePositionFront:AVCaptureDevicePositionBack;NSError *e=nil;AVCaptureDevice *d=[self deviceForPosition:p];AVCaptureDeviceInput *i=d?[AVCaptureDeviceInput deviceInputWithDevice:d error:&e]:nil;if(i){[self.session beginConfiguration];AVCaptureDeviceInput *old=self.cameraInput;[self.session removeInput:old];if([self.session canAddInput:i]){[self.session addInput:i];self.cameraInput=i;}else[self.session addInput:old];[self configureLiveMode];[self applyConnections];[self.session commitConfiguration];}dispatch_async(dispatch_get_main_queue(),^{self.busy=NO;[self updateControls];if(e)[self alert:@"切换失败" message:e.localizedDescription];});});
+}
+- (BOOL)gestureRecognizer:(UIGestureRecognizer *)gesture shouldReceiveTouch:(UITouch *)touch {
+ UIView *view=touch.view;while(view&&view!=self.stage){if([view isKindOfClass:UIControl.class])return NO;view=view.superview;}return YES;
 }
 - (void)focus:(UITapGestureRecognizer *)g {
  if(self.busy||self.recording||!self.configured)return;CGPoint pt=[g locationInView:self.stage];CGFloat u=pt.x/MAX(1,self.stage.bounds.size.width),v=pt.y/MAX(1,self.stage.bounds.size.height);BOOL mirrored=self.cameraInput.device.position==AVCaptureDevicePositionFront&&[self.activeSettings[@"mirrorFront"] boolValue];if(mirrored)u=1-u;CGPoint p;switch(self.captureOrientation){case AVCaptureVideoOrientationLandscapeRight:p=CGPointMake(u,v);break;case AVCaptureVideoOrientationLandscapeLeft:p=CGPointMake(1-u,1-v);break;case AVCaptureVideoOrientationPortraitUpsideDown:p=CGPointMake(1-v,u);break;default:p=CGPointMake(v,1-u);break;}
  UIView *ring=[[UIView alloc]initWithFrame:CGRectMake(pt.x-25,pt.y-25,50,50)];ring.layer.borderColor=MCAccent().CGColor;ring.layer.borderWidth=1.3;ring.layer.cornerRadius=10;[self.stage addSubview:ring];[UIView animateWithDuration:.7 delay:.5 options:0 animations:^{ring.alpha=0;} completion:^(BOOL f){[ring removeFromSuperview];}];
  dispatch_async(self.sessionQueue,^{AVCaptureDevice *d=self.cameraInput.device;NSError *e=nil;if([d lockForConfiguration:&e]){if(d.focusPointOfInterestSupported&&[d isFocusModeSupported:AVCaptureFocusModeAutoFocus]){d.focusPointOfInterest=p;d.focusMode=AVCaptureFocusModeAutoFocus;}if(d.exposurePointOfInterestSupported&&[d isExposureModeSupported:AVCaptureExposureModeContinuousAutoExposure]){d.exposurePointOfInterest=p;d.exposureMode=AVCaptureExposureModeContinuousAutoExposure;}[d unlockForConfiguration];}});
 }
-- (void)exposureChanged:(UISlider *)slider {
- if(self.busy||self.recording)return;float value=slider.value;self.exposureLabel.text=[NSString stringWithFormat:@"EV %+.1f",value];dispatch_async(self.sessionQueue,^{AVCaptureDevice *d=self.cameraInput.device;NSError *e=nil;if([d lockForConfiguration:&e]){[d setExposureTargetBias:MAX(d.minExposureTargetBias,MIN(d.maxExposureTargetBias,value)) completionHandler:nil];[d unlockForConfiguration];}});
+- (void)refreshZoomUI {
+ dispatch_async(self.sessionQueue,^{AVCaptureDevice *d=self.cameraInput.device;CGFloat lo=MAX(1,d.minAvailableVideoZoomFactor),hi=MAX(lo,MIN(8,d.maxAvailableVideoZoomFactor)),z=d.videoZoomFactor;
+ dispatch_async(dispatch_get_main_queue(),^{self.zoomSlider.minimumValue=lo;self.zoomSlider.maximumValue=hi;self.zoomSlider.value=MAX(lo,MIN(hi,z));self.zoomLabel.text=[NSString stringWithFormat:@"%.1f×",self.zoomSlider.value];self.zoomSlider.accessibilityValue=self.zoomLabel.text;});});
 }
+- (void)setZoomFactor:(CGFloat)factor {
+ if(self.busy||self.recording||!isfinite(factor))return;dispatch_async(self.sessionQueue,^{AVCaptureDevice *d=self.cameraInput.device;NSError *error=nil;if([d lockForConfiguration:&error]){d.videoZoomFactor=MAX(MAX(1,d.minAvailableVideoZoomFactor),MIN(MIN(d.maxAvailableVideoZoomFactor,8),factor));[d unlockForConfiguration];}[self refreshZoomUI];});
+}
+- (void)zoomSliderChanged:(UISlider *)slider { [self setZoomFactor:slider.value]; }
 - (void)zoom:(UIPinchGestureRecognizer *)g {
- if(self.busy||self.recording)return;if(g.state==UIGestureRecognizerStateBegan)self.zoomStart=self.cameraInput.device.videoZoomFactor;CGFloat z=self.zoomStart*g.scale;dispatch_async(self.sessionQueue,^{AVCaptureDevice *d=self.cameraInput.device;NSError *e=nil;if([d lockForConfiguration:&e]){d.videoZoomFactor=MAX(d.minAvailableVideoZoomFactor,MIN(MIN(d.maxAvailableVideoZoomFactor,8),z));[d unlockForConfiguration];}});
+ if(self.busy||self.recording)return;if(g.state==UIGestureRecognizerStateBegan)self.zoomStart=self.zoomSlider.value;[self setZoomFactor:self.zoomStart*g.scale];
+}
+- (void)applyExposureSettings {
+ AVCaptureDevice *d=self.cameraInput.device;id raw=self.activeSettings[@"exposureBias"];float value=[raw isKindOfClass:NSNumber.class]?[raw floatValue]:0;if(!isfinite(value))value=0;value=MAX(-2,MIN(2,value));NSError *e=nil;if(d&&[d lockForConfiguration:&e]){float target=MAX(d.minExposureTargetBias,MIN(d.maxExposureTargetBias,value));if(fabs(d.exposureTargetBias-target)>.01)[d setExposureTargetBias:target completionHandler:nil];[d unlockForConfiguration];}
 }
 - (void)captureOutput:(AVCaptureOutput *)output didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer fromConnection:(AVCaptureConnection *)connection {
  @autoreleasepool {CFTimeInterval now=CACurrentMediaTime();if(now-self.lastFrameAt<1./20||self.inBackground||self.framePending)return;self.lastFrameAt=now;CVPixelBufferRef pixel=CMSampleBufferGetImageBuffer(sampleBuffer);if(!pixel)return;CIImage *source=[CIImage imageWithCVPixelBuffer:pixel];CGFloat scale=MIN(1.,720./MAX(source.extent.size.width,source.extent.size.height));source=[source imageByApplyingTransform:CGAffineTransformMakeScale(scale,scale)];NSDictionary *settings=self.activeSettings;CIImage *toned=[[WMEngine shared]applyTone:source settings:settings];CGImageRef cg=[self.ciContext createCGImage:toned fromRect:source.extent];if(!cg)return;UIImage *frame=[UIImage imageWithCGImage:cg];CGImageRelease(cg);CGImageRef rawCG=[self.ciContext createCGImage:source fromRect:source.extent];UIImage *raw=rawCG?[UIImage imageWithCGImage:rawCG]:frame;if(rawCG)CGImageRelease(rawCG);
  self.framePending=YES;dispatch_async(dispatch_get_main_queue(),^{self.framePending=NO;if(self.editorShown||self.inBackground)return;self.lastFrame=frame;self.lastRawFrame=raw;self.preview.image=frame;if(fabs(self.feedSize.width/MAX(1,self.feedSize.height)-frame.size.width/MAX(1,frame.size.height))>.005){self.feedSize=frame.size;[self.view setNeedsLayout];[self.view layoutIfNeeded];[self updateOverlay];}});}
 }
 - (void)refreshSettings {
- self.activeSettings=[[WMEngine shared]snapshot];self.gridView.grid=[self.activeSettings[@"gridEnabled"]boolValue];[self.gridView setNeedsDisplay];[self.watermarkButton setTitle:[self.activeSettings[@"watermarkEnabled"]boolValue]?@"水印开启":@"水印关闭" forState:UIControlStateNormal];[self updateOverlay];if(self.configured)dispatch_async(self.sessionQueue,^{[self applyConnections];});
+ self.activeSettings=[[WMEngine shared]snapshot];self.gridView.grid=[self.activeSettings[@"gridEnabled"]boolValue];[self.gridView setNeedsDisplay];[self.watermarkButton setTitle:[self.activeSettings[@"watermarkEnabled"]boolValue]?@"水印开启":@"水印关闭" forState:UIControlStateNormal];[self updateOverlay];[self refreshLiveUI];if(self.configured)dispatch_async(self.sessionQueue,^{[self.session beginConfiguration];[self configureLiveMode];[self applyConnections];[self.session commitConfiguration];});
 }
 - (void)updateOverlay {
  CGSize s=self.stage.bounds.size;if(s.width<1||s.height<1)return;CGFloat z=MIN(2,720./MAX(s.width,s.height));s=CGSizeMake(s.width*z,s.height*z);self.overlay.image=[[WMEngine shared]overlayForSize:s settings:self.recording?self.captureSettings:self.activeSettings date:self.recording?self.recordDate:NSDate.date];
 }
 - (void)toggleWatermark {if(self.busy||self.recording)return;WMEngine *e=WMEngine.shared;e.settings[@"watermarkEnabled"]=@(![e.settings[@"watermarkEnabled"]boolValue]);[e save];[self refreshSettings];}
-- (void)openEditor {
- if(self.busy||self.recording)return;self.editorShown=YES;dispatch_async(self.sessionQueue,^{[self.session stopRunning];});WMEditorViewController *e=[WMEditorViewController new];e.backgroundImage=self.nativeVideoPreview?nil:self.lastRawFrame;__weak typeof(self) weak=self;e.onChange=^{[weak refreshSettings];};UINavigationController *nav=[[UINavigationController alloc]initWithRootViewController:e];nav.modalPresentationStyle=UIModalPresentationFullScreen;[self presentViewController:nav animated:YES completion:nil];
+- (void)openSettings { [self presentEditorAtSettings:YES]; }
+- (void)openEditor { [self presentEditorAtSettings:NO]; }
+- (void)presentEditorAtSettings:(BOOL)settings {
+ if(self.busy||self.recording)return;self.editorShown=YES;dispatch_async(self.sessionQueue,^{[self.session stopRunning];});WMEditorViewController *e=[WMEditorViewController new];e.opensSettings=settings;e.backgroundImage=self.nativeVideoPreview?nil:self.lastRawFrame;__weak typeof(self) weak=self;e.onChange=^{[weak refreshSettings];};UINavigationController *nav=[[UINavigationController alloc]initWithRootViewController:e];nav.modalPresentationStyle=UIModalPresentationFullScreen;[self presentViewController:nav animated:YES completion:nil];
 }
 - (void)viewDidAppear:(BOOL)animated {[super viewDidAppear:animated];if(self.editorShown&&!self.presentedViewController){self.editorShown=NO;[self refreshSettings];dispatch_async(self.sessionQueue,^{if(self.configured&&!self.inBackground)[self.session startRunning];});}}
 - (void)updateControls {
- BOOL locked=self.busy||self.recording;self.exposureSlider.enabled=!locked&&self.configured;self.mode.enabled=!locked;self.switchButton.enabled=!locked&&self.configured;self.editButton.enabled=!locked;self.filesButton.enabled=!locked;self.watermarkButton.enabled=!locked;self.shutter.enabled=self.configured&&(!self.busy||self.recording)&&!self.inBackground;
+ BOOL locked=self.busy||self.recording;self.zoomSlider.enabled=!locked&&self.configured;self.settingsButton.enabled=!locked;[self refreshLiveUI];if(!locked)[self refreshZoomUI];self.mode.enabled=!locked;self.switchButton.enabled=!locked&&self.configured;self.editButton.enabled=!locked;self.filesButton.enabled=!locked;self.watermarkButton.enabled=!locked;self.shutter.enabled=self.configured&&(!self.busy||self.recording)&&!self.inBackground;
  self.shutter.backgroundColor=self.wantsVideo?UIColor.systemRedColor:UIColor.whiteColor;[self.shutter setTitle:self.recording?@"■":@"" forState:UIControlStateNormal];[self.shutter setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];self.shutter.accessibilityLabel=self.recording?@"停止录像":(self.wantsVideo?@"开始录像":@"拍照");UIApplication.sharedApplication.idleTimerDisabled=self.busy||self.recording;
 }
 - (NSURL *)pendingDirectory {
@@ -214,7 +282,9 @@ static NSString *MCID(void){return NSUUID.UUID.UUIDString;}
 }
 - (void)capturePressed {
  if(self.recording){[self status:@"正在结束录像…"];self.shutter.enabled=NO;dispatch_async(self.sessionQueue,^{[self.movieOutput stopRecording];});return;}if(self.busy||!self.configured)return;if(!self.session.running){[self alert:@"相机尚未就绪" message:@"请返回前台，或重新打开相机权限。"];return;}
- NSInteger delay=[self.activeSettings[@"timerSeconds"]integerValue];if(delay>0){self.busy=YES;self.countdown=MIN(delay,10);NSInteger generation=++self.countdownGeneration;[self updateControls];[self countdownStep:generation];}else [self startCapture];
+ NSInteger delay=[self.activeSettings[@"timerSeconds"]integerValue];
+ if(!self.wantsVideo&&[self.activeSettings[@"livePhotoEnabled"]boolValue]&&[AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio]!=AVAuthorizationStatusAuthorized){[self authorizeLive:^{[self refreshSettings];[self status:@"麦克风已开启，取景稳定后再次按快门拍摄 LIVE"]; }];return;}
+ if(delay>0){self.busy=YES;self.countdown=MIN(delay,10);NSInteger generation=++self.countdownGeneration;[self updateControls];[self countdownStep:generation];}else [self startCapture];
 }
 - (void)countdownStep:(NSInteger)generation {
  if(generation!=self.countdownGeneration||self.inBackground)return;if(self.countdown<=0){self.countdownLabel.text=@"";self.busy=NO;[self startCapture];return;}self.countdownLabel.text=[NSString stringWithFormat:@"%ld",(long)self.countdown--];dispatch_after(dispatch_time(DISPATCH_TIME_NOW,NSEC_PER_SEC),dispatch_get_main_queue(),^{[self countdownStep:generation];});
@@ -227,7 +297,8 @@ static NSString *MCID(void){return NSUUID.UUID.UUIDString;}
 // Runs on sessionQueue. A rejected request must restore the UI, never silently
 // retry or pretend a photo was captured. Retain the exact error locally.
 - (void)rejectPhotoRequest:(NSString *)message {
- self.photoProcessed=YES;
+ self.photoProcessed=YES;self.capturingLive=NO;
+ dispatch_async(dispatch_get_main_queue(),^{self.recordLabel.text=@"";});
  NSDictionary *detail=@{@"appVersion":[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"]?:@"",
  @"osVersion":UIDevice.currentDevice.systemVersion?:@"",@"time":@([NSDate.date timeIntervalSince1970]),
  @"stage":@"photo-request",@"message":message?:@"未知错误"};
@@ -247,19 +318,49 @@ static NSString *MCID(void){return NSUUID.UUID.UUIDString;}
   p.photoQualityPrioritization=MIN(AVCapturePhotoQualityPrioritizationQuality,self.photoOutput.maxPhotoQualityPrioritization);
   NSInteger f=[self.captureSettings[@"flashMode"]integerValue];AVCaptureFlashMode fm=f==1?AVCaptureFlashModeAuto:f==2?AVCaptureFlashModeOn:AVCaptureFlashModeOff;
   if([self.photoOutput.supportedFlashModes containsObject:@(fm)])p.flashMode=fm;
+  self.capturingLive=NO;
+  if([self.captureSettings[@"livePhotoEnabled"]boolValue]){
+   p.photoQualityPrioritization=MIN(AVCapturePhotoQualityPrioritizationBalanced,self.photoOutput.maxPhotoQualityPrioritization);
+   if(!self.photoOutput.isLivePhotoCaptureSupported||!self.photoOutput.isLivePhotoCaptureEnabled||self.photoOutput.isLivePhotoCaptureSuspended){[self rejectPhotoRequest:@"当前相机尚不能拍摄 Live Photo，请等待取景稳定或关闭 LIVE。"];return;}
+   if(!self.audioInput||![self.session.inputs containsObject:self.audioInput]){[self rejectPhotoRequest:@"Live Photo 音频输入尚未就绪，请关闭再开启 LIVE 后重试。"];return;}
+   if(![self respondsToSelector:@selector(captureOutput:didFinishProcessingLivePhotoToMovieFileAtURL:duration:photoDisplayTime:resolvedSettings:error:)]){[self rejectPhotoRequest:@"实况回调校验失败"];return;}
+   NSString *ident=MCID();NSURL *dir=[self pendingDirectory];
+   NSDictionary *job=@{@"kind":@"live",@"stage":@"capturing",@"source":[ident stringByAppendingString:@"-raw.jpg"],@"sourceMovie":[ident stringByAppendingString:@"-raw.mov"],@"output":[ident stringByAppendingString:@".jpg"],@"outputMovie":[ident stringByAppendingString:@".mov"],@"settings":self.captureSettings,@"date":@([self.captureDate timeIntervalSince1970])};
+   NSURL *meta=[dir URLByAppendingPathComponent:[ident stringByAppendingString:@".job.json"]];if(![self writeJob:job URL:meta]){[self rejectPhotoRequest:@"无法为 Live Photo 创建安全暂存记录"];return;}
+   self.captureLiveMeta=meta;self.captureLiveJob=job;self.capturingLive=YES;
+   dispatch_async(self.renderQueue,^{self.livePhotoWritten=NO;self.liveMovieWritten=NO;self.liveCaptureError=nil;});
+   p.livePhotoMovieFileURL=[self fileForJob:job key:@"sourceMovie"];
+   if([self.photoOutput.availableLivePhotoVideoCodecTypes containsObject:AVVideoCodecTypeH264])p.livePhotoVideoCodecType=AVVideoCodecTypeH264;
+   dispatch_async(dispatch_get_main_queue(),^{self.recordLabel.text=@"● LIVE 拍摄中";[self status:@"正在拍摄实况 · 请保持稳定"];});
+  }
   [self.photoOutput capturePhotoWithSettings:p delegate:self];
  } @catch(NSException *exception) {
   [self rejectPhotoRequest:[NSString stringWithFormat:@"%@：%@",exception.name,exception.reason?:@"系统拒绝了拍照请求"]];
  }
 }
 - (void)captureOutput:(AVCapturePhotoOutput *)output didFinishProcessingPhoto:(AVCapturePhoto *)photo error:(NSError *)error {
+ if(self.capturingLive){
+  NSData *data=error?nil:[photo fileDataRepresentation];NSDictionary *job=self.captureLiveJob;
+  dispatch_async(self.renderQueue,^{NSError *writeError=error;NSURL *raw=[self fileForJob:job key:@"source"];BOOL ok=data&&raw&&[data writeToURL:raw options:NSDataWritingAtomic error:&writeError];self.livePhotoWritten=ok;if(!ok)self.liveCaptureError=writeError?:[NSError errorWithDomain:@"MarkCam.LivePhoto" code:2 userInfo:@{NSLocalizedDescriptionKey:@"实况主照片未收到或暂存失败"}];});return;
+ }
  self.photoProcessed=YES;NSData *data=error?nil:[photo fileDataRepresentation];if(!data){dispatch_async(dispatch_get_main_queue(),^{self.busy=NO;[self updateControls];[self alert:@"拍照失败" message:error.localizedDescription?:@"没有收到照片数据。"];});return;}
  NSDictionary *settings=self.captureSettings;NSDate *date=self.captureDate;
  dispatch_async(self.renderQueue,^{NSString *ident=MCID();NSURL *dir=[self pendingDirectory],*raw=[dir URLByAppendingPathComponent:[ident stringByAppendingString:@"-raw.jpg"]],*meta=[dir URLByAppendingPathComponent:[ident stringByAppendingString:@".job.json"]];NSError *e=nil;
  if(![data writeToURL:raw options:NSDataWritingAtomic error:&e]){dispatch_async(dispatch_get_main_queue(),^{self.busy=NO;[self updateControls];[self alert:@"暂存失败" message:e.localizedDescription?:@"请检查剩余空间。"];});return;}
  NSMutableDictionary *job=[@{@"kind":@"photo",@"stage":@"raw",@"source":raw.lastPathComponent,@"output":[ident stringByAppendingString:@".jpg"],@"settings":settings,@"date":@([date timeIntervalSince1970])}mutableCopy];[self writeJob:job URL:meta];dispatch_async(dispatch_get_main_queue(),^{self.activeMetaURL=meta;[self processJob:job meta:meta];});});
 }
+- (void)captureOutput:(AVCapturePhotoOutput *)output didFinishProcessingLivePhotoToMovieFileAtURL:(NSURL *)url duration:(CMTime)duration photoDisplayTime:(CMTime)photoDisplayTime resolvedSettings:(AVCaptureResolvedPhotoSettings *)resolvedSettings error:(NSError *)error {
+ NSDictionary *job=self.captureLiveJob;
+ dispatch_async(self.renderQueue,^{NSNumber *bytes=nil;[url getResourceValue:&bytes forKey:NSURLFileSizeKey error:nil];NSURL *expected=[self fileForJob:job key:@"sourceMovie"];self.liveMovieWritten=!error&&[url.path isEqual:expected.path]&&bytes.unsignedLongLongValue>1024;
+ if(!self.liveMovieWritten)self.liveCaptureError=error?:[NSError errorWithDomain:@"MarkCam.LivePhoto" code:3 userInfo:@{NSLocalizedDescriptionKey:@"实况动态片段未完成"}];});
+}
 - (void)captureOutput:(AVCapturePhotoOutput *)output didFinishCaptureForResolvedSettings:(AVCaptureResolvedPhotoSettings *)resolvedSettings error:(NSError *)error {
+ if(self.capturingLive){
+  NSDictionary *snapshot=self.captureLiveJob;NSURL *meta=self.captureLiveMeta;
+  dispatch_async(self.renderQueue,^{NSMutableDictionary *job=[snapshot mutableCopy];NSError *failure=error?:self.liveCaptureError;BOOL ready=self.livePhotoWritten&&self.liveMovieWritten&&!failure;job[@"stage"]=ready?@"raw":@"incomplete";if(failure)job[@"captureError"]=failure.localizedDescription;[self writeJob:job URL:meta];
+   dispatch_async(dispatch_get_main_queue(),^{self.capturingLive=NO;self.photoProcessed=YES;self.recordLabel.text=@"";if(!ready||self.inBackground){self.busy=NO;[self updateControls];[self status:ready?@"实况原片已暂存，可在待保存继续":@"实况未完成，已有素材均保留"];if(!ready)[self alert:@"实况拍摄未完成" message:failure.localizedDescription?:@"未收到完整照片与动态片段；未按普通照片静默保存。"];return;}[self processJob:job meta:meta];});
+  });return;
+ }
  if(!self.photoProcessed){self.photoProcessed=YES;dispatch_async(dispatch_get_main_queue(),^{self.busy=NO;[self updateControls];[self alert:@"拍摄未完成" message:error.localizedDescription?:@"系统没有返回照片，请重试。"];});}
 }
 - (void)captureOutput:(AVCaptureFileOutput *)output didStartRecordingToOutputFileAtURL:(NSURL *)url fromConnections:(NSArray<AVCaptureConnection *> *)connections {
@@ -271,7 +372,24 @@ static NSString *MCID(void){return NSUUID.UUID.UUIDString;}
  BOOL success=!error||[error.userInfo[AVErrorRecordingSuccessfullyFinishedKey]boolValue];NSNumber *size=nil;[url getResourceValue:&size forKey:NSURLFileSizeKey error:nil];if(!success||size.longLongValue<1024||!job){self.busy=NO;[self updateControls];[self alert:@"录像未正常完成" message:[NSString stringWithFormat:@"%@\n已保留可用的临时文件，可在“待保存”中重试或导出。",error.localizedDescription?:@"数据不完整"]];return;}
  if(self.inBackground){self.busy=NO;[self updateControls];[self status:@"录像已暂存，回前台后到“待保存”完成合成"];return;}[self processJob:job meta:self.activeMetaURL];});
 }
+- (void)processLiveJob:(NSMutableDictionary *)job meta:(NSURL *)meta {
+ NSURL *source=[self fileForJob:job key:@"source"],*movie=[self fileForJob:job key:@"sourceMovie"],*dest=[self fileForJob:job key:@"output"],*destMovie=[self fileForJob:job key:@"outputMovie"];
+ BOOL valid=source&&movie&&dest&&destMovie&&[job[@"settings"]isKindOfClass:NSDictionary.class]&&[job[@"date"]isKindOfClass:NSNumber.class]&&isfinite([job[@"date"]doubleValue]);
+ if(!valid||[NSSet setWithArray:@[source?:NSNull.null,movie?:NSNull.null,dest?:NSNull.null,destMovie?:NSNull.null]].count!=4){self.busy=NO;[self updateControls];[self alert:@"实况恢复信息损坏" message:@"请从文件 App 导出原始照片和 MOV 文件。"];return;}
+ if([job[@"stage"]isEqual:@"saved"]){[self cleanupJob:job meta:meta];self.busy=NO;[self updateControls];return;}
+ self.busy=YES;self.activeMetaURL=meta;[self updateControls];BOOL ready=[job[@"stage"]isEqual:@"ready"]&&[NSFileManager.defaultManager fileExistsAtPath:dest.path]&&[NSFileManager.defaultManager fileExistsAtPath:destMovie.path];if(ready){[self saveJob:job meta:meta];return;}
+ for(NSString *k in @[@"source",@"sourceMovie"]){NSURL *u=[self fileForJob:job key:k];NSNumber *bytes=nil;[u getResourceValue:&bytes forKey:NSURLFileSizeKey error:nil];if(!bytes||bytes.unsignedLongLongValue<1024||bytes.unsignedLongLongValue>512ULL*1024*1024){self.busy=NO;[self updateControls];[self alert:@"实况素材无效" message:@"资源为空、过大或缺失；原文件保留，可从文件 App 导出。"];return;}}
+ if(![NSFileManager.defaultManager fileExistsAtPath:source.path]||![NSFileManager.defaultManager fileExistsAtPath:movie.path]){self.busy=NO;[self updateControls];[self alert:@"实况资源不完整" message:@"缺少主照片或动态片段。已有素材仍在待保存目录，不会静默转换为普通照片。"];return;}
+ for(NSURL *u in @[dest,destMovie]){if([NSFileManager.defaultManager fileExistsAtPath:u.path]){NSError *error=nil;if(![NSFileManager.defaultManager removeItemAtURL:u error:&error]){self.busy=NO;[self updateControls];[self alert:@"无法重试实况处理" message:error.localizedDescription];return;}}}
+ job[@"stage"]=@"raw";[self writeJob:job URL:meta];[self status:@"正在合成 Live Photo · 请保持前台"];self.progress.hidden=NO;self.cancelExportButton.hidden=NO;self.progress.progress=0;
+ self.liveProcessor=[MCLivePhotoProcessor new];NSDate *date=[NSDate dateWithTimeIntervalSince1970:[job[@"date"]doubleValue]];
+ [self.liveProcessor processPhoto:source movie:movie outputPhoto:dest outputMovie:destMovie settings:job[@"settings"] date:date completion:^(NSError *error){self.liveProcessor=nil;self.progress.hidden=YES;self.cancelExportButton.hidden=YES;
+  if(error){self.busy=NO;[self updateControls];[self status:@"实况合成未完成，原始配对资源保留"];[self alert:@"Live Photo 未完成" message:error.localizedDescription];return;}
+  job[@"stage"]=@"ready";[self writeJob:job URL:meta];[self saveJob:job meta:meta];
+ }];
+}
 - (void)processJob:(NSMutableDictionary *)job meta:(NSURL *)meta {
+ if([job isKindOfClass:NSDictionary.class]&&[job[@"kind"]isEqual:@"live"]){[self processLiveJob:job meta:meta];return;}
  NSURL *source=[self fileForJob:job key:@"source"],*dest=[self fileForJob:job key:@"output"];if(!source||!dest||[source.path isEqual:dest.path]||![@[@"photo",@"video"] containsObject:job[@"kind"]]||![@[@"raw",@"ready",@"saved"] containsObject:job[@"stage"]]||![job[@"date"]isKindOfClass:NSNumber.class]||!isfinite([job[@"date"]doubleValue])||![job[@"settings"]isKindOfClass:NSDictionary.class]){self.busy=NO;[self updateControls];[self alert:@"无法恢复" message:@"恢复信息损坏；请用文件 App 导出原始文件。"];return;}
  self.busy=YES;self.activeMetaURL=meta;[self updateControls];if([job[@"stage"]isEqual:@"raw"]&&[NSFileManager.defaultManager fileExistsAtPath:dest.path]){NSError *cleanupError=nil;if(![NSFileManager.defaultManager removeItemAtURL:dest error:&cleanupError]){self.busy=NO;[self updateControls];[self alert:@"无法重试" message:cleanupError.localizedDescription?:@"无法清理上次未完成的合成文件，原片未删除。"];return;}}if([job[@"stage"]isEqual:@"ready"]&&[NSFileManager.defaultManager fileExistsAtPath:dest.path]){[self saveJob:job meta:meta];return;}
  if([job[@"stage"]isEqual:@"saved"]){[self cleanupJob:job meta:meta];self.busy=NO;[self updateControls];[self status:@"此前已保存，已清理暂存文件"];return;}
@@ -282,29 +400,36 @@ static NSString *MCID(void){return NSUUID.UUID.UUIDString;}
 }
 - (void)saveJob:(NSMutableDictionary *)job meta:(NSURL *)meta {
  if(self.inBackground){self.busy=NO;[self updateControls];[self status:@"成品已暂存，回前台后可继续保存"];return;}[self status:@"正在保存到系统相册…"];
- [PHPhotoLibrary requestAuthorizationForAccessLevel:PHAccessLevelAddOnly handler:^(PHAuthorizationStatus st){dispatch_async(dispatch_get_main_queue(),^{if(st!=PHAuthorizationStatusAuthorized&&st!=PHAuthorizationStatusLimited){self.busy=NO;[self updateControls];[self status:@"相册权限未开启，成品已保留在待保存"];[self permissionAlert:@"保存成片需要“添加照片”权限。拒绝不会删除作品，可在“待保存”中分享或重试。"];return;}NSURL *dest=[self fileForJob:job key:@"output"],*raw=[self fileForJob:job key:@"source"];BOOL video=[job[@"kind"]isEqual:@"video"],keep=[job[@"settings"][@"keepOriginal"]boolValue];NSDate *date=[NSDate dateWithTimeIntervalSince1970:[job[@"date"]doubleValue]];
- [PHPhotoLibrary.sharedPhotoLibrary performChanges:^{PHAssetCreationRequest *r=[PHAssetCreationRequest creationRequestForAsset];r.creationDate=date;PHAssetResourceCreationOptions *o=[PHAssetResourceCreationOptions new];o.shouldMoveFile=NO;[r addResourceWithType:video?PHAssetResourceTypeVideo:PHAssetResourceTypePhoto fileURL:dest options:o];if(keep){PHAssetCreationRequest *original=[PHAssetCreationRequest creationRequestForAsset];original.creationDate=date;PHAssetResourceCreationOptions *opt=[PHAssetResourceCreationOptions new];opt.shouldMoveFile=NO;[original addResourceWithType:video?PHAssetResourceTypeVideo:PHAssetResourceTypePhoto fileURL:raw options:opt];}} completionHandler:^(BOOL ok,NSError *e){dispatch_async(dispatch_get_main_queue(),^{self.busy=NO;[self updateControls];if(ok){job[@"stage"]=@"saved";[self writeJob:job URL:meta];[self cleanupJob:job meta:meta];[self status:keep?@"已保存成片与原片 ✓":@"已保存到系统相册 ✓"];UIImpactFeedbackGenerator *f=[[UIImpactFeedbackGenerator alloc]initWithStyle:UIImpactFeedbackStyleLight];[f impactOccurred];}else{[self status:@"保存失败，成品未删除，可重试"];[self alert:@"相册保存失败" message:e.localizedDescription?:@"请检查相册权限及剩余存储空间。"];}});}];});}];
+ [PHPhotoLibrary requestAuthorizationForAccessLevel:PHAccessLevelAddOnly handler:^(PHAuthorizationStatus st){dispatch_async(dispatch_get_main_queue(),^{if(st!=PHAuthorizationStatusAuthorized&&st!=PHAuthorizationStatusLimited){self.busy=NO;[self updateControls];[self status:@"相册权限未开启，成品已保留在待保存"];[self permissionAlert:@"保存成片需要“添加照片”权限。拒绝不会删除作品，可在“待保存”中分享或重试。"];return;}NSURL *dest=[self fileForJob:job key:@"output"],*raw=[self fileForJob:job key:@"source"];BOOL video=[job[@"kind"]isEqual:@"video"],live=[job[@"kind"]isEqual:@"live"],keep=[job[@"settings"][@"keepOriginal"]boolValue];NSURL *paired=[self fileForJob:job key:@"outputMovie"],*rawPaired=[self fileForJob:job key:@"sourceMovie"];NSDate *date=[NSDate dateWithTimeIntervalSince1970:[job[@"date"]doubleValue]];
+ [PHPhotoLibrary.sharedPhotoLibrary performChanges:^{PHAssetCreationRequest *r=[PHAssetCreationRequest creationRequestForAsset];r.creationDate=date;PHAssetResourceCreationOptions *o=[PHAssetResourceCreationOptions new];o.shouldMoveFile=NO;[r addResourceWithType:video?PHAssetResourceTypeVideo:PHAssetResourceTypePhoto fileURL:dest options:o];if(live)[r addResourceWithType:PHAssetResourceTypePairedVideo fileURL:paired options:o];if(keep){PHAssetCreationRequest *original=[PHAssetCreationRequest creationRequestForAsset];original.creationDate=date;PHAssetResourceCreationOptions *opt=[PHAssetResourceCreationOptions new];opt.shouldMoveFile=NO;[original addResourceWithType:video?PHAssetResourceTypeVideo:PHAssetResourceTypePhoto fileURL:raw options:opt];if(live)[original addResourceWithType:PHAssetResourceTypePairedVideo fileURL:rawPaired options:opt];}} completionHandler:^(BOOL ok,NSError *e){dispatch_async(dispatch_get_main_queue(),^{self.busy=NO;[self updateControls];if(ok){job[@"stage"]=@"saved";[self writeJob:job URL:meta];[self cleanupJob:job meta:meta];[self status:live?(keep?@"已保存实况成片与原片 ✓":@"Live Photo 已保存 · 到相册长按播放"):keep?@"已保存成片与原片 ✓":@"已保存到系统相册 ✓"];UIImpactFeedbackGenerator *f=[[UIImpactFeedbackGenerator alloc]initWithStyle:UIImpactFeedbackStyleLight];[f impactOccurred];}else{[self status:@"保存失败，成品未删除，可重试"];[self alert:@"相册保存失败" message:e.localizedDescription?:@"请检查相册权限及剩余存储空间。"];}});}];});}];
 }
 - (void)cleanupJob:(NSDictionary *)job meta:(NSURL *)meta {
- for(NSString *key in @[@"source",@"output"]){NSURL *u=[self fileForJob:job key:key];if(u)[NSFileManager.defaultManager removeItemAtURL:u error:nil];}[NSFileManager.defaultManager removeItemAtURL:meta error:nil];
+ for(NSString *key in @[@"source",@"output",@"sourceMovie",@"outputMovie"]){NSURL *u=[self fileForJob:job key:key];if(u)[NSFileManager.defaultManager removeItemAtURL:u error:nil];}[NSFileManager.defaultManager removeItemAtURL:meta error:nil];
 }
-- (void)cancelExport {[self.exportSession cancelExport];[self status:@"已请求取消，原片仍保留"];}
+- (void)cancelExport {[self.exportSession cancelExport];[self.liveProcessor cancel];[self status:@"已请求取消，原片仍保留"];}
 - (void)anchor:(UIViewController *)vc button:(UIView *)b {if(vc.popoverPresentationController){vc.popoverPresentationController.sourceView=b;vc.popoverPresentationController.sourceRect=b.bounds;}}
 - (void)showFiles {
  NSArray<NSURL *> *files=[NSFileManager.defaultManager contentsOfDirectoryAtURL:[self pendingDirectory] includingPropertiesForKeys:@[NSURLContentModificationDateKey] options:0 error:nil];NSMutableArray<NSURL *> *jobs=[NSMutableArray new];for(NSURL *u in files)if([u.lastPathComponent hasSuffix:@".job.json"])[jobs addObject:u];[jobs sortUsingComparator:^NSComparisonResult(NSURL *a,NSURL *b){NSDate *da=nil,*db=nil;[a getResourceValue:&da forKey:NSURLContentModificationDateKey error:nil];[b getResourceValue:&db forKey:NSURLContentModificationDateKey error:nil];return [db compare:da];}];
- UIAlertController *a=[UIAlertController alertControllerWithTitle:@"待保存作品" message:jobs.count?@"系统相册保存成功后，暂存文件自动清理。":@"没有待保存作品。已保存的成片请在系统“照片”中查看。" preferredStyle:UIAlertControllerStyleActionSheet];NSUInteger count=0;for(NSURL *u in jobs){if(count++>=15)break;NSDictionary *j=[NSJSONSerialization JSONObjectWithData:[NSData dataWithContentsOfURL:u]?:NSData.data options:0 error:nil];NSString *t=[NSString stringWithFormat:@"%@ · %@",[j[@"kind"]isEqual:@"video"]?@"视频":@"照片",[NSDateFormatter localizedStringFromDate:[NSDate dateWithTimeIntervalSince1970:[j[@"date"]doubleValue]] dateStyle:NSDateFormatterShortStyle timeStyle:NSDateFormatterShortStyle]];[a addAction:[UIAlertAction actionWithTitle:t style:UIAlertActionStyleDefault handler:^(UIAlertAction *act){[self showJob:u];}]];}
+ UIAlertController *a=[UIAlertController alertControllerWithTitle:@"待保存作品" message:jobs.count?@"系统相册保存成功后，暂存文件自动清理。":@"没有待保存作品。已保存的成片请在系统“照片”中查看。" preferredStyle:UIAlertControllerStyleActionSheet];NSUInteger count=0;for(NSURL *u in jobs){if(count++>=15)break;NSDictionary *j=[NSJSONSerialization JSONObjectWithData:[NSData dataWithContentsOfURL:u]?:NSData.data options:0 error:nil];NSString *t=[NSString stringWithFormat:@"%@ · %@",[j[@"kind"]isEqual:@"video"]?@"视频":([j[@"kind"]isEqual:@"live"]?@"实况":@"照片"),[NSDateFormatter localizedStringFromDate:[NSDate dateWithTimeIntervalSince1970:[j[@"date"]doubleValue]] dateStyle:NSDateFormatterShortStyle timeStyle:NSDateFormatterShortStyle]];[a addAction:[UIAlertAction actionWithTitle:t style:UIAlertActionStyleDefault handler:^(UIAlertAction *act){[self showJob:u];}]];}
  [a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];[self anchor:a button:self.filesButton];[self presentViewController:a animated:YES completion:nil];
+}
+- (void)shareJob:(NSDictionary *)job {
+ NSMutableArray<NSURL *> *items=[NSMutableArray new];BOOL live=[job[@"kind"]isEqual:@"live"];BOOL useOutput=[job[@"stage"]isEqual:@"ready"];
+ NSArray *keys=live?(useOutput?@[@"output",@"outputMovie"]:@[@"source",@"sourceMovie"]):(useOutput?@[@"output"]:@[@"source"]);
+ for(NSString *key in keys){NSURL *url=[self fileForJob:job key:key];if(url&&[NSFileManager.defaultManager fileExistsAtPath:url.path])[items addObject:url];}
+ if(!items.count){[self alert:@"没有可分享的文件" message:@"请在文件 App 检查暂存目录。"];return;}
+ UIActivityViewController *share=[[UIActivityViewController alloc]initWithActivityItems:items applicationActivities:nil];[self anchor:share button:self.filesButton];[self presentViewController:share animated:YES completion:nil];
 }
 - (void)showJob:(NSURL *)meta {
  NSData *d=[NSData dataWithContentsOfURL:meta];NSMutableDictionary *job=d?[NSJSONSerialization JSONObjectWithData:d options:NSJSONReadingMutableContainers error:nil]:nil;if(!job){[self alert:@"无法读取记录" message:@"可通过文件 App 的“我的 iPhone → 印记相机 → Pending”查找原始文件。"];return;}
- NSURL *output=[self fileForJob:job key:@"output"],*source=[self fileForJob:job key:@"source"];NSURL *share=output&&[NSFileManager.defaultManager fileExistsAtPath:output.path]?output:source;
- UIAlertController *a=[UIAlertController alertControllerWithTitle:@"作品恢复" message:@"重试使用拍摄当时的模板与时间。分享只导出文件，不自动删除暂存。" preferredStyle:UIAlertControllerStyleActionSheet];[a addAction:[UIAlertAction actionWithTitle:@"重试合成 / 保存相册" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x){[self processJob:job meta:meta];}]];if(share)[a addAction:[UIAlertAction actionWithTitle:@"分享已有成品或原片" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x){UIActivityViewController *s=[[UIActivityViewController alloc]initWithActivityItems:@[share] applicationActivities:nil];[self anchor:s button:self.filesButton];[self presentViewController:s animated:YES completion:nil];}]];[a addAction:[UIAlertAction actionWithTitle:@"删除此暂存作品…" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *x){UIAlertController *q=[UIAlertController alertControllerWithTitle:@"永久删除暂存？" message:@"如果尚未保存或分享，作品将无法恢复。" preferredStyle:UIAlertControllerStyleAlert];[q addAction:[UIAlertAction actionWithTitle:@"保留" style:UIAlertActionStyleCancel handler:nil]];[q addAction:[UIAlertAction actionWithTitle:@"删除" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *v){[self cleanupJob:job meta:meta];[self status:@"已删除此暂存作品"]; }]];[self presentViewController:q animated:YES completion:nil];}]];[a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];[self anchor:a button:self.filesButton];[self presentViewController:a animated:YES completion:nil];
+ NSURL *output=[self fileForJob:job key:@"output"],*source=[self fileForJob:job key:@"source"];BOOL hasShare=([NSFileManager.defaultManager fileExistsAtPath:output.path]||[NSFileManager.defaultManager fileExistsAtPath:source.path]);if([job[@"kind"]isEqual:@"live"])hasShare=hasShare||[NSFileManager.defaultManager fileExistsAtPath:[self fileForJob:job key:@"sourceMovie"].path];
+ UIAlertController *a=[UIAlertController alertControllerWithTitle:@"作品恢复" message:@"重试使用拍摄当时的模板与时间。分享只导出文件，不自动删除暂存。" preferredStyle:UIAlertControllerStyleActionSheet];[a addAction:[UIAlertAction actionWithTitle:@"重试合成 / 保存相册" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x){[self processJob:job meta:meta];}]];if(hasShare)[a addAction:[UIAlertAction actionWithTitle:[job[@"kind"]isEqual:@"live"]?@"导出实况资源文件（照片 + MOV）":@"分享已有成品或原片" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x){[self shareJob:job];}]];[a addAction:[UIAlertAction actionWithTitle:@"删除此暂存作品…" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *x){UIAlertController *q=[UIAlertController alertControllerWithTitle:@"永久删除暂存？" message:@"如果尚未保存或分享，作品将无法恢复。" preferredStyle:UIAlertControllerStyleAlert];[q addAction:[UIAlertAction actionWithTitle:@"保留" style:UIAlertActionStyleCancel handler:nil]];[q addAction:[UIAlertAction actionWithTitle:@"删除" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *v){[self cleanupJob:job meta:meta];[self status:@"已删除此暂存作品"]; }]];[self presentViewController:q animated:YES completion:nil];}]];[a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];[self anchor:a button:self.filesButton];[self presentViewController:a animated:YES completion:nil];
 }
 - (void)tick {
- if(self.recording){NSInteger sec=(NSInteger)(-[self.recordDate timeIntervalSinceNow]);self.recordLabel.text=[NSString stringWithFormat:@"● %02ld:%02ld",(long)(sec/60),(long)(sec%60)];}else if(!self.busy&&!self.editorShown&&!self.inBackground)[self updateOverlay];if(self.exportSession)self.progress.progress=self.exportSession.progress;
+ if(self.recording){NSInteger sec=(NSInteger)(-[self.recordDate timeIntervalSinceNow]);self.recordLabel.text=[NSString stringWithFormat:@"● %02ld:%02ld",(long)(sec/60),(long)(sec%60)];}else if(!self.busy&&!self.editorShown&&!self.inBackground)[self updateOverlay];if(self.exportSession)self.progress.progress=self.exportSession.progress;if(self.liveProcessor)self.progress.progress=self.liveProcessor.progress;
 }
 - (void)background:(NSNotification *)n {
- self.inBackground=YES;self.countdownGeneration++;if(self.countdownLabel.text.length){self.countdownLabel.text=@"";self.busy=NO;}[self.exportSession cancelExport];dispatch_async(self.sessionQueue,^{if(self.movieOutput.isRecording)[self.movieOutput stopRecording];[self.session stopRunning];});[self updateControls];UIApplication.sharedApplication.idleTimerDisabled=NO;
+ self.inBackground=YES;self.countdownGeneration++;if(self.countdownLabel.text.length){self.countdownLabel.text=@"";self.busy=NO;}[self.exportSession cancelExport];[self.liveProcessor cancel];dispatch_async(self.sessionQueue,^{if(self.movieOutput.isRecording)[self.movieOutput stopRecording];[self.session stopRunning];});[self updateControls];UIApplication.sharedApplication.idleTimerDisabled=NO;
 }
 - (void)foreground:(NSNotification *)n {
  self.inBackground=NO;[self refreshSettings];if(!self.configured){[self requestCamera];return;}dispatch_async(self.sessionQueue,^{if(!self.editorShown)[self.session startRunning];});[self updateControls];

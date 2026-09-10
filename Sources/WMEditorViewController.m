@@ -145,6 +145,10 @@ static NSString *WMEHex(UIColor *color) {
     for (UIGestureRecognizer *gesture in gestures) { gesture.delegate=self; [self.canvas addGestureRecognizer:gesture]; }
     self.selectedID=[self layers].lastObject[@"id"]; [self rebuildInspector]; [self prepareBackground]; [self requestRender];
 }
+- (void)viewDidAppear:(BOOL)animated {
+    [super viewDidAppear:animated];
+    if(self.opensSettings){self.opensSettings=NO;[self.table scrollToRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:4] atScrollPosition:UITableViewScrollPositionTop animated:NO];}
+}
 - (void)viewDidLayoutSubviews { [super viewDidLayoutSubviews]; [self layoutCanvas]; }
 - (void)viewDidDisappear:(BOOL)animated {
     [super viewDidDisappear:animated];
@@ -286,6 +290,9 @@ static NSString *WMEHex(UIColor *color) {
     [self slider:@"饱和度" key:@"saturation" min:0 max:2],
     [self slider:@"冷暖" key:@"warmth" min:-1 max:1]]; }
 - (NSArray *)settingRows { return @[
+    [self slider:@"EV 曝光补偿" key:@"exposureBias" min:-2 max:2],
+    [self action:@"曝光恢复为 0 EV" key:@"resetExposure"],
+    [self toggle:@"Live Photo 实况照片" key:@"livePhotoEnabled"],
     [self toggle:@"自动添加水印" key:@"watermarkEnabled"], [self toggle:@"保留原片" key:@"keepOriginal"],
     [self toggle:@"相机九宫格" key:@"gridEnabled"], [self toggle:@"前置镜像" key:@"mirrorFront"],
     [self action:@"闪光灯" key:@"flashMode"], [self action:@"拍照倒计时" key:@"timerSeconds"]]; }
@@ -325,7 +332,7 @@ static NSString *WMEHex(UIColor *color) {
     if (section==1) return @"锁定后不能移动或修改图层；先解锁再编辑。图片保存在本机，文字支持 {date} 和 {time}。";
     if (section==2) return @"仅调整照片底图，水印颜色保持不变。这里的“原图”是调色归零，不会移除水印。";
     if (section==3) return @"切换模板只替换水印图层，调色与相机设置不变。导出包含当前图层和内嵌图片，建议及时备份。";
-    return @"所有修改立即保存。水印仅作用于印记相机内拍摄的内容；闪光与镜像效果以设备支持为准。";
+    return @"所有修改立即保存。EV 影响真实摄像头曝光，返回取景后生效，不能改变这里的已拍预览图。Live Photo 需摄像头支持和麦克风授权；照片与动态部分都会应用水印。";
 }
 - (NSDictionary *)rowAt:(NSIndexPath *)path {
     if (path.section==1) return path.row<(NSInteger)self.inspectorRows.count ? self.inspectorRows[path.row] : nil;
@@ -334,6 +341,7 @@ static NSString *WMEHex(UIColor *color) {
     if (path.section==4) return self.settingRows[path.row]; return nil;
 }
 - (NSString *)valueLabel:(double)value key:(NSString *)key {
+    if ([key isEqual:@"exposureBias"]) return [NSString stringWithFormat:@"%+.1f EV",value];
     if ([key isEqual:@"rotation"]) return [NSString stringWithFormat:@"%.0f°",value*180/M_PI];
     if ([@[@"x",@"y",@"opacity",@"width",@"fontSize"] containsObject:key]) return [NSString stringWithFormat:@"%.1f%%",value*100];
     return [NSString stringWithFormat:@"%.2f",value];
@@ -397,9 +405,10 @@ static NSString *WMEHex(UIColor *color) {
 - (void)sliderChanged:(UISlider *)slider {
     NSString *key=slider.accessibilityIdentifier; NSMutableDictionary *values;
     if (slider.tag==1) { values=[self selectedLayer]; if (!values || [values[@"locked"] boolValue]) return; }
+    else if (slider.tag==4) { values=self.engine.settings; }
     else { values=[self.engine.settings[@"tone"] mutableCopy] ?: [NSMutableDictionary dictionary]; self.engine.settings[@"tone"]=values; }
     values[key]=@(WMEClamp(slider.value,slider.minimumValue,slider.maximumValue));
-    NSDictionary *row=nil; for (NSDictionary *candidate in slider.tag==1 ? self.inspectorRows : self.toneRows) if ([candidate[@"key"] isEqual:key]) { row=candidate; break; }
+    NSDictionary *row=nil; for (NSDictionary *candidate in slider.tag==1 ? self.inspectorRows : (slider.tag==4 ? self.settingRows : self.toneRows)) if ([candidate[@"key"] isEqual:key]) { row=candidate; break; }
     UILabel *label=[slider.superview viewWithTag:913]; label.text=[NSString stringWithFormat:@"%@  %@",row[@"title"],[self valueLabel:slider.value key:key]];
     slider.accessibilityValue=[self valueLabel:slider.value key:key]; [self commit:NO];
 }
@@ -429,6 +438,7 @@ static NSString *WMEHex(UIColor *color) {
     else if ([key isEqual:@"saveTemplate"]) [self saveTemplate];
     else if ([key isEqual:@"importBackup"]) [self chooseDocument:YES];
     else if ([key isEqual:@"exportBackup"]) [self exportBackup];
+    else if ([key isEqual:@"resetExposure"]) { self.engine.settings[@"exposureBias"]=@0; [self commit:YES]; }
     else if ([key isEqual:@"flashMode"]) [self chooseSetting:key titles:@[@"关闭",@"自动",@"开启"] values:@[@0,@1,@2]];
     else if ([key isEqual:@"timerSeconds"]) [self chooseSetting:key titles:@[@"关闭",@"3 秒",@"10 秒"] values:@[@0,@3,@10]];
 }

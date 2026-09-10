@@ -4,7 +4,7 @@ import pathlib, zipfile, plistlib, struct, hashlib, json, io, re
 from macho_inspect import MachO
 from PIL import Image
 ROOT=pathlib.Path(__file__).resolve().parents[1]
-ipa=ROOT/'dist/MarkCam-1.0.1-resign-required.ipa'
+ipa=ROOT/'dist/MarkCam-1.1.0-resign-required.ipa'
 checks=[]
 def check(name,condition):
     checks.append({'check':name,'passed':bool(condition)})
@@ -18,7 +18,7 @@ with zipfile.ZipFile(ipa) as z:
     for k in ['CFBundleIdentifier','CFBundleExecutable','CFBundlePackageType','CFBundleVersion','CFBundleShortVersionString','MinimumOSVersion','UIDeviceFamily','UILaunchScreen']:
         check('Info.plist '+k,k in info)
     check('Correct executable name',info['CFBundleExecutable']=='MarkCam')
-    check('Hotfix version 1.0.1 build 2',info['CFBundleShortVersionString']=='1.0.1' and info['CFBundleVersion']=='2')
+    check('Feature version 1.1.0 build 3',info['CFBundleShortVersionString']=='1.1.0' and info['CFBundleVersion']=='3')
     check('Bundle identifier unchanged',info['CFBundleIdentifier']=='app.markcam.camera')
     check('Correct minimum OS',info['MinimumOSVersion']=='16.5')
     check('iPhone device family',info['UIDeviceFamily']==[1])
@@ -62,6 +62,7 @@ with zipfile.ZipFile(ipa) as z:
     parsed=MachO(binary);methods=parsed.methods('CameraViewController')
     for selector in ['captureOutput:didFinishProcessingPhoto:error:',
                      'captureOutput:didFinishCaptureForResolvedSettings:error:',
+                     'captureOutput:didFinishProcessingLivePhotoToMovieFileAtURL:duration:photoDisplayTime:resolvedSettings:error:',
                      'captureOutput:didStartRecordingToOutputFileAtURL:fromConnections:',
                      'captureOutput:didFinishRecordingToOutputFileAtURL:fromConnections:error:']:
         check('Compiled camera implements '+selector,selector in methods)
@@ -70,8 +71,33 @@ with zipfile.ZipFile(ipa) as z:
             check('Method implementation in executable text '+selector,any(name=='__TEXT' and vm<=address<vm+sz for name,vm,_,off,sz in parsed.segments))
     check('No misspelled photo callback in class metadata',not any(s.startswith('photoOutput:') for s in methods))
     check('Local rejected-request diagnostic implemented','rejectPhotoRequest:' in methods and 'submitPhotoRequest' in methods)
+    live_methods=parsed.methods('MCLivePhotoProcessor')
+    for selector in ['processPhoto:movie:outputPhoto:outputMovie:settings:date:completion:','prepareMovie:video:settings:date:','validatePair','cancel']:
+        check('Compiled live processor '+selector,selector in live_methods)
+    for selector in ['openSettings','zoomSliderChanged:','setZoomFactor:','applyExposureSettings','processLiveJob:meta:']:
+        check('Compiled camera feature '+selector,selector in methods)
 camera=(ROOT/'Sources/CameraViewController.m').read_text();editor=(ROOT/'Sources/WMEditorViewController.m').read_text();engine=(ROOT/'Sources/WMEngine.m').read_text()
+live=(ROOT/'Sources/MCLivePhotoProcessor.m').read_text()
 for name,condition in [
+('EV moved off main preview','exposureSlider' not in camera and 'exposureChanged:' not in camera),
+('Zoom slider actual camera control','self.zoomSlider' in camera and 'd.videoZoomFactor=' in camera),
+('Pinch and slider share zoom update','setZoomFactor:self.zoomStart*g.scale' in camera and 'setZoomFactor:slider.value' in camera),
+('Preview gestures ignore controls','isKindOfClass:UIControl.class' in camera),
+('EV persistent default','@"exposureBias":@0' in engine),
+('Live persistent default off','@"livePhotoEnabled":@NO' in engine),
+('EV settings route not tone','slider.tag==4' in editor and 'key:@"exposureBias"' in editor),
+('Exposure clamped to device capabilities','d.minExposureTargetBias' in camera and 'd.maxExposureTargetBias' in camera),
+('Native live support tested','isLivePhotoCaptureSupported' in camera and 'p.livePhotoMovieFileURL=' in camera),
+('Live photo waits for both resources','self.livePhotoWritten&&self.liveMovieWritten' in camera),
+('Live resource saved as pairedVideo',camera.count('PHAssetResourceTypePairedVideo')>=2),
+('Live originals preserved','@"sourceMovie"' in camera and '@"outputMovie"' in camera),
+('Live input pairing ID checked','kCGImagePropertyMakerAppleDictionary' in live and 'AVMetadataIdentifierQuickTimeMetadataContentIdentifier' in live),
+('Live still image time preserved','com.apple.quicktime.still-image-time' in live and 'sourceFormatHint:format' in live),
+('Native timed metadata track passthrough','AVMediaTypeMetadata' in live and 'outputSettings:nil' in live and 'appendSampleBuffer:sample' in live),
+('Live still photo and movie both watermarked','processPhoto:image settings:settings' in live and 'overlayForSize:size settings:settings' in live),
+('Live pair checked by system before save','requestLivePhotoWithResourceFileURLs:' in live and 'PHLivePhotoInfoIsDegradedKey' in live),
+('Live work cancellable and bounded','120*NSEC_PER_SEC' in live and '[self.liveProcessor cancel]' in camera),
+('No live networking',not any(k in live for k in ['NSURLSession','NSURLConnection','http://','https://'])),
 ('Photo callback required contract','@protocol MCPhotoCaptureContract' in camera and '@required' in camera),
 ('Exact photo selector preflight','respondsToSelector:@selector(captureOutput:didFinishProcessingPhoto:error:)' in camera),
 ('No wrong photo delegate selector','void)photoOutput:' not in camera),

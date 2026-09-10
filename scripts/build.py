@@ -15,7 +15,7 @@ APP.mkdir(parents=True,exist_ok=True); DIST.mkdir(exist_ok=True)
 objects=[]
 for src in sorted((ROOT/'Sources').glob('*.m')):
     obj=BUILD/(src.stem+'.o')
-    inputs=[src]+list((ROOT/'Sources').glob('*.h'))
+    inputs=[src,pathlib.Path(__file__)]+list((ROOT/'Sources').glob('*.h'))
     if resume and obj.is_file() and obj.stat().st_size>0 and obj.stat().st_mtime>=max(p.stat().st_mtime for p in inputs):
         print('REUSE',src.name,flush=True);objects.append(str(obj));continue
     cmd=['clang','--target=arm64-apple-ios16.5','-isysroot',str(SDK),'-fobjc-arc','-fblocks','-fobjc-exceptions','-fexceptions','-Werror=protocol','-O2','-gline-tables-only','-Wall','-Wextra','-Wno-unused-parameter','-Wno-deprecated-declarations','-I'+str(ROOT/'Sources'),'-c',str(src),'-o',str(obj)]
@@ -30,28 +30,28 @@ icons=['AppIcon20x2','AppIcon20x3','AppIcon29x2','AppIcon29x3','AppIcon40x2','Ap
 info={
 'CFBundleDevelopmentRegion':'zh_CN','CFBundleLocalizations':['zh_CN','en'],
 'CFBundleExecutable':'MarkCam','CFBundleIdentifier':'app.markcam.camera','CFBundleName':'MarkCam','CFBundleDisplayName':'印记相机',
-'CFBundlePackageType':'APPL','CFBundleInfoDictionaryVersion':'6.0','CFBundleShortVersionString':'1.0.1','CFBundleVersion':'2',
+'CFBundlePackageType':'APPL','CFBundleInfoDictionaryVersion':'6.0','CFBundleShortVersionString':'1.1.0','CFBundleVersion':'3',
 'MinimumOSVersion':'16.5','UIDeviceFamily':[1],'LSRequiresIPhoneOS':True,'UIRequiredDeviceCapabilities':['arm64'],
 'UILaunchScreen':{},'UIUserInterfaceStyle':'Dark','UIStatusBarStyle':'UIStatusBarStyleLightContent',
 'UISupportedInterfaceOrientations':['UIInterfaceOrientationPortrait','UIInterfaceOrientationLandscapeLeft','UIInterfaceOrientationLandscapeRight'],
 'CFBundleIcons':{'CFBundlePrimaryIcon':{'CFBundleIconFiles':icons,'UIPrerenderedIcon':False}},
 'CFBundleIconFiles':icons,'UIFileSharingEnabled':True,'LSSupportsOpeningDocumentsInPlace':True,
 'NSCameraUsageDescription':'用于拍照、录像和实时预览，自定义水印只在本机合成。',
-'NSMicrophoneUsageDescription':'用于录制视频声音，不会后台录音或上传。',
+'NSMicrophoneUsageDescription':'用于录制视频和 Live Photo 实况照片声音，不会后台录音或上传。',
 'NSPhotoLibraryAddUsageDescription':'将拍摄的照片与视频保存到系统相册；不读取整个照片图库。',
 'ITSAppUsesNonExemptEncryption':False}
 with open(APP/'Info.plist','wb') as f: plistlib.dump(info,f)
 privacy={'NSPrivacyTracking':False,'NSPrivacyTrackingDomains':[],'NSPrivacyCollectedDataTypes':[],'NSPrivacyAccessedAPITypes':[{'NSPrivacyAccessedAPIType':'NSPrivacyAccessedAPICategoryFileTimestamp','NSPrivacyAccessedAPITypeReasons':['C617.1']}]}
 with open(APP/'PrivacyInfo.xcprivacy','wb') as f: plistlib.dump(privacy,f)
 os.chmod(APP/'MarkCam',0o755)
-ipa=DIST/'MarkCam-1.0.1-resign-required.ipa'
+ipa=DIST/'MarkCam-1.1.0-resign-required.ipa'
 with zipfile.ZipFile(ipa,'w',zipfile.ZIP_DEFLATED,compresslevel=8) as z:
     for p in sorted((BUILD/'Payload').rglob('*')):
         if p.is_file(): z.write(p,p.relative_to(BUILD))
 header=struct.unpack('<IIII',open(APP/'MarkCam','rb').read(16))
 assert header[0]==0xfeedfacf and header[1]==0x100000c and header[3]==2
 sha=hashlib.sha256(ipa.read_bytes()).hexdigest()
-report={'app':'印记相机','version':'1.0.1 (2)','min_ios':'16.5','target':'arm64','sdk':'theos iPhoneOS16.5','ipa':ipa.name,'bytes':ipa.stat().st_size,'sha256':sha,'signing':'Mach-O ad-hoc signature only. Requires legitimate re-signing/provisioning to install.','device_tested':False,'source_files':[str(x.relative_to(ROOT)) for x in (ROOT/'Sources').glob('*')]}
+report={'app':'印记相机','version':'1.1.0 (3)','min_ios':'16.5','target':'arm64','sdk':'theos iPhoneOS16.5','ipa':ipa.name,'bytes':ipa.stat().st_size,'sha256':sha,'signing':'Mach-O ad-hoc signature only. Requires legitimate re-signing/provisioning to install.','device_tested':False,'source_files':[str(x.relative_to(ROOT)) for x in (ROOT/'Sources').glob('*')]}
 (DIST/'build-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2))
 (DIST/'SHA256SUMS.txt').write_text(sha+'  '+ipa.name+'\n')
 print(json.dumps(report,ensure_ascii=False,indent=2))
