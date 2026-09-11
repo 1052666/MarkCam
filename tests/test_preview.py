@@ -56,7 +56,7 @@ for name,ok in [
  ('True ultrawide virtual discovery','AVCaptureDeviceTypeBuiltInDualWideCamera' in camera and 'AVCaptureDeviceTypeBuiltInTripleCamera' in camera),
  ('Optical mapping uses device switches','virtualDeviceSwitchOverVideoZoomFactors' in camera and 'MCZoomHardware' in camera),
  ('Lens controls synchronized','lensChanged:' in camera and '[self showZoom:self.requestedZoom]' in camera),
- ('Live processor matches v1.1.0 baseline',hashlib.sha256((ROOT/'Sources/MCLivePhotoProcessor.m').read_bytes()).hexdigest()=='70abeb7322cd3967039ed7468baea22550e7961b95ea81ad8688613a4a748a77'),
+ ('Live processor uses queued low-memory photo renderer','MCPhotoRenderer renderSource:photo destination:self.outputPhoto' in (ROOT/'Sources/MCLivePhotoProcessor.m').read_text()),
 ]:check(name,ok)
 (ROOT/'dist').mkdir(exist_ok=True)
 report={'scope':'Host-executed native C geometry/zoom + static contracts; not camera or UIKit runtime, not measured FPS','passed':len(checks),'failed':0,'checks':checks}

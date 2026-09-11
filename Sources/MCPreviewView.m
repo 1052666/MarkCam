@@ -42,6 +42,7 @@
  [CATransaction begin];[CATransaction setDisableActions:YES];((CAMetalLayer *)self.layer).drawableSize=size;[CATransaction commit];
  @synchronized(self){self.targetSize=size;}
 }
+- (void)clearCaches {self.renderingEnabled=NO;[self reset];dispatch_async(self.snapshotQueue,^{[self.context clearCaches];});}
 - (void)reset {
  @synchronized(self){self.generation++;self.failureSent=NO;self.received=0;self.completed=0;self.skipped=0;self.started=0;self.lastCompleted=0;self.gpuMilliseconds=0;}
 }

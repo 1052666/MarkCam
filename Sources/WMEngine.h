@@ -6,6 +6,7 @@ NS_ASSUME_NONNULL_BEGIN
 + (instancetype)shared;
 @property(nonatomic,strong) NSMutableDictionary *settings;
 - (void)save;
+- (void)clearCaches;
 - (NSDictionary *)snapshot;
 - (NSArray<NSDictionary *> *)presets;
 - (NSURL *)documentsURL;

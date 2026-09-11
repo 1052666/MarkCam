@@ -54,6 +54,7 @@ static UIImage *Decode(NSData *data) {
  NSData *d=ValidSettings(merged)?JSONData(merged,0,nil):nil;if(!d)d=JSONData([self defaults],0,nil);
  return [NSJSONSerialization JSONObjectWithData:d options:0 error:nil];}
 }
+- (void)clearCaches { [self.context clearCaches]; }
 - (void)save {
  @synchronized(self){NSMutableDictionary *s=[self defaults];if([self.settings isKindOfClass:NSDictionary.class])[s addEntriesFromDictionary:self.settings];if(!ValidSettings(s))return;
  NSData *d=JSONData(s,0,nil);if(d.length>32*1024*1024)return;

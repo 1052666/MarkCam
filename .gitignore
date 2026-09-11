@@ -18,3 +18,5 @@ __pycache__/
 *.mobileprovision
 .DS_Store
 LastCaptureError.json
+LastMemoryStatus.json
+Pending/

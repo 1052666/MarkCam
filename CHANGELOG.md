@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.0 (5) — early test release
+- Persist capture resources and job metadata before releasing the shutter; move watermark/tone rendering and PhotoKit saving into a serial utility queue.
+- Bound pending work (ordinary photos: 6; Live capture requires fewer than 2 pending jobs). Defer worker startup after capture, and prevent new capture during heavy Live/video processing.
+- Add file-based Core Image photo rendering, a 2048px overlay canvas cap, available-memory checks, cache clearing, and thermal/memory-pressure backpressure. Actual memory savings are not measured.
+- Preserve pending resources for pause, interruption and failure recovery; require review before retrying uncertain PhotoKit saves.
+- Retain short iOS background leases only; this is not unlimited background execution or a guarantee against system jetsam.
+- Cross-build succeeded. Full v1.2.0 regression is INCOMPLETE: last validation stopped at `Live resource saved as pairedVideo`; the remaining chained run was cancelled. Device acceptance has not been performed.
+- Publish the exact previously delivered IPA unchanged, alongside current source and an explicit test-status report.
+
 ## 1.1.1 (4)
 - Remove the 20fps preview gate and two per-frame UIImage conversions. Neutral tone uses native preview; active tone renders directly to a bounded Metal pipeline.
 - Render/cache watermark overlays off the main thread. Capture the editor background only on demand.

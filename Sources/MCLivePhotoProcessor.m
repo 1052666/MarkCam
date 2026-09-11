@@ -1,5 +1,6 @@
 #import "MCLivePhotoProcessor.h"
 #import "WMEngine.h"
+#import "MCPhotoRenderer.h"
 #import <AVFoundation/AVFoundation.h>
 #import <Photos/Photos.h>
 #import <ImageIO/ImageIO.h>
@@ -23,7 +24,7 @@ static NSString *LPIdentifier(NSDictionary *props) {id maker=props[(__bridge NSS
 @property(nonatomic) PHLivePhotoRequestID liveRequest;
 @end
 @implementation MCLivePhotoProcessor
-- (instancetype)init {if((self=[super init])){_queue=dispatch_queue_create("markcam.live.process",DISPATCH_QUEUE_SERIAL);_liveRequest=PHLivePhotoRequestIDInvalid;}return self;}
+- (instancetype)init {if((self=[super init])){_queue=dispatch_queue_create("markcam.live.process",dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL,QOS_CLASS_UTILITY,0));_liveRequest=PHLivePhotoRequestIDInvalid;}return self;}
 - (void)cancel {self.cancelled=YES;dispatch_async(self.queue,^{[self finish:LPErr(@"实况合成已取消，原始照片和动态片段均已保留。")];});}
 - (void)finish:(NSError *)error {
  if(self.finished)return;self.finished=YES;
@@ -63,16 +64,7 @@ static NSString *LPIdentifier(NSDictionary *props) {id maker=props[(__bridge NSS
  CGFloat width=[props[(__bridge NSString *)kCGImagePropertyPixelWidth]doubleValue],height=[props[(__bridge NSString *)kCGImagePropertyPixelHeight]doubleValue];
  if(!isfinite(width)||!isfinite(height)||width<1||height<1||width*height>64000000){[self finish:LPErr(@"实况主照片像素尺寸无效或过大")];return;}
  if(self.cancelled){[self finish:LPErr(@"实况处理已取消")];return;}
- UIImage *image=nil,*result=nil;@autoreleasepool {
- image=[UIImage imageWithContentsOfFile:photo.path];result=image?[[WMEngine shared]processPhoto:image settings:settings date:date]:nil;
- }
- if(!result.CGImage){[self finish:LPErr(@"实况主照片调色或水印合成失败")];return;}
- // Preserve the native Apple pairing ID, but do not carry stale thumbnail/orientation.
- NSMutableData *jpeg=[NSMutableData data];CGImageDestinationRef dest=CGImageDestinationCreateWithData((__bridge CFMutableDataRef)jpeg,(__bridge CFStringRef)UTTypeJPEG.identifier,1,NULL);
- if(!dest){[self finish:LPErr(@"无法编码实况主照片")];return;}
- NSDictionary *metadata=@{(__bridge NSString *)kCGImagePropertyMakerAppleDictionary:@{@"17":identifier},(__bridge NSString *)kCGImagePropertyOrientation:@1,(__bridge NSString *)kCGImageDestinationLossyCompressionQuality:@.96};
- CGImageDestinationAddImage(dest,result.CGImage,(__bridge CFDictionaryRef)metadata);BOOL ok=CGImageDestinationFinalize(dest);CFRelease(dest);
- NSError *error=nil;if(!ok||![jpeg writeToURL:self.outputPhoto options:NSDataWritingAtomic error:&error]){[self finish:error?:LPErr(@"实况主照片写入失败")];return;}
+ NSError *photoError=nil;if(![MCPhotoRenderer renderSource:photo destination:self.outputPhoto settings:settings date:date error:&photoError]){[self finish:photoError?:LPErr(@"实况主照片合成失败")];return;}
  // Re-read pairing identity; do not rely only on intended writer settings.
  src=CGImageSourceCreateWithURL((__bridge CFURLRef)self.outputPhoto,NULL);NSDictionary *check=src?CFBridgingRelease(CGImageSourceCopyPropertiesAtIndex(src,0,NULL)):nil;if(src)CFRelease(src);
  if(![LPIdentifier(check) isEqual:identifier]){[self finish:LPErr(@"实况照片配对信息编码校验失败")];return;}
@@ -83,7 +75,7 @@ static NSString *LPIdentifier(NSDictionary *props) {id maker=props[(__bridge NSS
  CGRect transformed=CGRectApplyAffineTransform((CGRect){CGPointZero,video.naturalSize},video.preferredTransform);CGSize size=CGSizeMake(fabs(transformed.size.width),fabs(transformed.size.height));
  if(!isfinite(size.width)||!isfinite(size.height)||size.width<2||size.height<2||size.width>4096||size.height>4096){[self finish:LPErr(@"实况视频尺寸超出处理范围")];return;}
  size.width=floor(size.width/2)*2;size.height=floor(size.height/2)*2;
- UIImage *overlayImage=[[WMEngine shared]overlayForSize:size settings:settings date:date];CIImage *overlay=[CIImage imageWithCGImage:overlayImage.CGImage];CIContext *context=[CIContext contextWithOptions:@{kCIContextCacheIntermediates:@NO}];
+ UIImage *overlayImage=[[WMEngine shared]overlayForSize:size settings:settings date:date];CIImage *overlay=[CIImage imageWithCGImage:overlayImage.CGImage];CIContext *context=[CIContext contextWithOptions:@{kCIContextCacheIntermediates:@NO,kCIContextWorkingFormat:@(kCIFormatRGBA8),kCIContextPriorityRequestLow:@YES}];
  AVVideoComposition *composition=[AVVideoComposition videoCompositionWithAsset:asset applyingCIFiltersWithHandler:^(AVAsynchronousCIImageFilteringRequest *request){@autoreleasepool{
   CIImage *frame=request.sourceImage;CGRect extent=frame.extent;CGSize render=request.renderSize;
   if(CGRectIsInfinite(extent)||CGRectIsEmpty(extent)||render.width<1||render.height<1){[request finishWithError:LPErr(@"实况画面尺寸无效")];return;}

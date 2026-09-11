@@ -4,7 +4,7 @@ import pathlib, zipfile, plistlib, struct, hashlib, json, io, re
 from macho_inspect import MachO
 from PIL import Image
 ROOT=pathlib.Path(__file__).resolve().parents[1]
-ipa=ROOT/'dist/MarkCam-1.1.1-resign-required.ipa'
+ipa=ROOT/'dist/MarkCam-1.2.0-resign-required.ipa'
 checks=[]
 def check(name,condition):
     checks.append({'check':name,'passed':bool(condition)})
@@ -18,7 +18,7 @@ with zipfile.ZipFile(ipa) as z:
     for k in ['CFBundleIdentifier','CFBundleExecutable','CFBundlePackageType','CFBundleVersion','CFBundleShortVersionString','MinimumOSVersion','UIDeviceFamily','UILaunchScreen']:
         check('Info.plist '+k,k in info)
     check('Correct executable name',info['CFBundleExecutable']=='MarkCam')
-    check('Feature version 1.1.1 build 4',info['CFBundleShortVersionString']=='1.1.1' and info['CFBundleVersion']=='4')
+    check('Feature version 1.2.0 build 5',info['CFBundleShortVersionString']=='1.2.0' and info['CFBundleVersion']=='5')
     check('Bundle identifier unchanged',info['CFBundleIdentifier']=='app.markcam.camera')
     check('Correct minimum OS',info['MinimumOSVersion']=='16.5')
     check('iPhone device family',info['UIDeviceFamily']==[1])
@@ -74,8 +74,12 @@ with zipfile.ZipFile(ipa) as z:
     live_methods=parsed.methods('MCLivePhotoProcessor')
     for selector in ['processPhoto:movie:outputPhoto:outputMovie:settings:date:completion:','prepareMovie:video:settings:date:','validatePair','cancel']:
         check('Compiled live processor '+selector,selector in live_methods)
-    for selector in ['openSettings','zoomSliderChanged:','setZoomFactor:','applyExposureSettings','processLiveJob:meta:']:
+    for selector in ['openSettings','zoomSliderChanged:','setZoomFactor:','applyExposureSettings','queueChanged','finishedCaptureJob:meta:error:','didReceiveMemoryWarning','writeMemoryDiagnostic:']:
         check('Compiled camera feature '+selector,selector in methods)
+    processing_methods=parsed.methods('MCProcessingQueue')
+    for selector in ['allowsCaptureLive:','tick','retry:','pause','memoryPressure','commitPhotos:meta:']:
+        check('Compiled async queue '+selector,selector in processing_methods)
+    check('Compiled low-memory photo renderer class', b'MCPhotoRenderer' in binary and b'renderSource:destination:settings:date:error:' in binary)
     preview_methods=parsed.methods('MCPreviewView')
     for selector in ['submitPixelBuffer:','requestSnapshot:','reset','statistics']:
         check('Compiled GPU preview '+selector,selector in preview_methods)
@@ -84,7 +88,22 @@ with zipfile.ZipFile(ipa) as z:
 camera=(ROOT/'Sources/CameraViewController.m').read_text();editor=(ROOT/'Sources/WMEditorViewController.m').read_text();engine=(ROOT/'Sources/WMEngine.m').read_text()
 live=(ROOT/'Sources/MCLivePhotoProcessor.m').read_text()
 preview=(ROOT/'Sources/MCPreviewView.m').read_text()
+queue=(ROOT/'Sources/MCProcessingQueue.m').read_text();renderer=(ROOT/'Sources/MCPhotoRenderer.m').read_text();policy=(ROOT/'Sources/MCWorkPolicy.h').read_text()
 for name,condition in [
+('Async capture releases before render','finishedCaptureJob:' in camera and '原片已暂存 ✓ 可继续拍' in camera),
+('Controller no longer owns export sessions','exportSession' not in camera and 'liveProcessor' not in camera),
+('Queue is finite','MC_MAX_PENDING 6' in policy and 'pending<(live?2:MC_MAX_PENDING)' in policy),
+('Queue serializes processing','self.processing=YES' in queue and 'if(self.processing||self.captureBusy)' in queue),
+('Heavy processing blocks capture','self.heavyProcessing=live||video' in queue and 'return !self.heavyProcessing' in queue),
+('Photo renderer reads from file and writes file','imageWithContentsOfURL:source' in renderer and 'writeJPEGRepresentationOfImage:output toURL:partial' in renderer),
+('Photo renderer avoids full UIImage output','processPhoto:' not in renderer and 'UIImagePNGRepresentation' not in renderer),
+('Photo renderer checks available memory','os_proc_available_memory()' in renderer and '可用内存不足' in renderer),
+('Overlay canvas capped for memory','2048./MAX(size.width,size.height)' in renderer),
+('Photo partial output is atomic','partial.jpg' in renderer and 'moveItemAtURL:partial toURL:destination' in renderer),
+('Memory pressure pauses queue','DISPATCH_MEMORYPRESSURE_WARN' in queue and 'memoryPressure' in camera),
+('Memory diagnostic local only','LastMemoryStatus.json' in camera and 'Local app metrics only' in camera),
+('Short background leases only','beginBackgroundTaskWithName:@"Finish pending media write"' in queue and 'beginBackgroundTaskWithName:@"Save capture to disk"' in camera),
+('Saving stage avoids silent duplicate retry','@"stage"]=@"saving"' in queue and '上次相册保存结果待确认' in camera),
 ('Ultra-wide virtual device discovery','AVCaptureDeviceTypeBuiltInTripleCamera' in camera and 'AVCaptureDeviceTypeBuiltInDualWideCamera' in camera),
 ('True lens switch factor mapping','virtualDeviceSwitchOverVideoZoomFactors' in camera and 'MCZoomHardware' in camera),
 ('Frame throttle removed','1./20' not in camera and 'lastFrameAt' not in camera),

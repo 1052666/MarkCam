@@ -12,6 +12,7 @@ NS_ASSUME_NONNULL_BEGIN
 /// Only opening the editor requests a CPU image, generated away from main.
 - (void)requestSnapshot:(void (^)(UIImage * _Nullable image))completion;
 - (void)reset;
+- (void)clearCaches;
 - (NSDictionary *)statistics;
 @end
 NS_ASSUME_NONNULL_END
