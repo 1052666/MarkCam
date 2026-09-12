@@ -206,6 +206,7 @@ static NSString *MCID(void){return [NSString stringWithFormat:@"%013lld-%@",(lon
  dispatch_async(dispatch_get_main_queue(),^{if(self.inBackground){[self status:message];return;}UIViewController *vc=self;while(vc.presentedViewController)vc=vc.presentedViewController;UIAlertController *a=[UIAlertController alertControllerWithTitle:title message:message preferredStyle:UIAlertControllerStyleAlert];[a addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleCancel handler:nil]];[vc presentViewController:a animated:YES completion:nil];});
 }
 - (void)permissionAlert:(NSString *)message {
+ if(self.inBackground||self.applicationInactive||self.presentedViewController)return;
  UIAlertController *a=[UIAlertController alertControllerWithTitle:@"需要授权" message:message preferredStyle:UIAlertControllerStyleAlert];[a addAction:[UIAlertAction actionWithTitle:@"暂不" style:UIAlertActionStyleCancel handler:nil]];[a addAction:[UIAlertAction actionWithTitle:@"打开设置" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x){[UIApplication.sharedApplication openURL:[NSURL URLWithString:UIApplicationOpenSettingsURLString] options:@{} completionHandler:nil];}]];[self presentViewController:a animated:YES completion:nil];
 }
 - (BOOL)applicationIsActive {return UIApplication.sharedApplication.applicationState==UIApplicationStateActive;}

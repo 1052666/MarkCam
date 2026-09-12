@@ -342,18 +342,19 @@ static UIImage *Fixture(void) {
     queue.reviewBlockReason=nil;[self.camera updateControls];Check(@"Queue recovery restores the shutter",shutter.enabled);
     NSURL *directory=RecoveryQueue.directory;
     [NSFileManager.defaultManager createDirectoryAtURL:directory withIntermediateDirectories:YES attributes:nil error:nil];
-    NSArray *stages=@[@"capturing",@"capturing",@"incomplete",@"incomplete",@"saving",@"saving",@"ready",@"ready",@"raw",@"ready"];
+    NSArray *stages=@[@"capturing",@"capturing",@"incomplete",@"incomplete",@"saving",@"saving",@"ready",@"ready",@"raw",@"ready",@"raw",@"raw",@"raw",@"raw",@"raw",@"raw"];
     for(NSUInteger i=0;i<stages.count;i++){
         NSMutableDictionary *job=[@{@"stage":stages[i],@"kind":@"photo",@"date":@0,@"settings":WMEngine.shared.snapshot} mutableCopy];
         if(i==6||i==7)job[@"queueBlocked"]=@YES;
+        if(i>=10)job[@"date"]=@"invalid";
         [MCProcessingQueue writeJob:job URL:[directory URLByAppendingPathComponent:[NSString stringWithFormat:@"%lu.job.json",(unsigned long)i]]];
     }
     self.recoveryQueue=[RecoveryQueue new];[self.recoveryQueue refresh];
 }
 - (void)checkRecovery:(BOOL)recreated {
-    Check(recreated?@"Recreated queue preserves all recovery entries":@"Disk scan preserves interrupted and failed photos",self.recoveryQueue.pendingCount==10);
+    Check(recreated?@"Recreated queue preserves all recovery entries":@"Disk scan preserves interrupted and failed photos",self.recoveryQueue.pendingCount==16);
     Check(@"Only runnable jobs occupy the capture budget",self.recoveryQueue.queuedCount==2);
-    Check(@"Six interrupted and two failed jobs do not gray out the shutter",[self.recoveryQueue captureBlockReasonForLive:NO reservedCount:0]==nil);
+    Check(@"Interrupted, failed and malformed jobs do not gray out the shutter",[self.recoveryQueue captureBlockReasonForLive:NO reservedCount:0]==nil);
     NSDictionary *saving=[NSJSONSerialization JSONObjectWithData:[NSData dataWithContentsOfURL:[RecoveryQueue.directory URLByAppendingPathComponent:@"4.job.json"]] options:0 error:nil];
     Check(@"Uncertain Photos save is never automatically retried",[saving[@"stage"] isEqual:@"saving"]);
     self.recoveryQueue=[RecoveryQueue new];[self.recoveryQueue refresh];

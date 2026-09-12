@@ -9,6 +9,9 @@
 #include <limits.h>
 
 static NSError *QError(NSString *s){return [NSError errorWithDomain:@"MarkCam.Queue" code:1 userInfo:@{NSLocalizedDescriptionKey:s}];}
+static BOOL QValidJob(NSDictionary *job){
+ return [job isKindOfClass:NSDictionary.class]&&[@[@"photo",@"live",@"video"]containsObject:job[@"kind"]]&&[WMEngine isValidSettingsSnapshot:job[@"settings"]]&&[job[@"date"]isKindOfClass:NSNumber.class]&&isfinite([job[@"date"]doubleValue]);
+}
 @interface MCProcessingQueue ()
 @property(nonatomic,readwrite) BOOL processing;
 @property(nonatomic,readwrite) BOOL heavyProcessing;
@@ -97,7 +100,7 @@ static NSError *QError(NSString *s){return [NSError errorWithDomain:@"MarkCam.Qu
    // A killed process cannot finish its old capture or Photos transaction.
    // Keep those files for explicit recovery; never reset "saving" to "ready"
    // automatically (Photos may already have committed the asset).
-   if(!job[@"queueBlocked"]&&[WMEngine isValidSettingsSnapshot:job[@"settings"]]&&([job[@"stage"]isEqual:@"raw"]||[job[@"stage"]isEqual:@"ready"]))queued++;
+   if(QValidJob(job)&&!job[@"queueBlocked"]&&([job[@"stage"]isEqual:@"raw"]||[job[@"stage"]isEqual:@"ready"]))queued++;
   }
   [jobs sortUsingComparator:^NSComparisonResult(NSURL *a,NSURL *b){return [a.lastPathComponent compare:b.lastPathComponent];}];
   dispatch_async(dispatch_get_main_queue(),^{self.scanning=NO;if(revision!=self.scanRevision){[self refresh];return;}self.jobs=jobs;self.pendingCount=jobs.count;self.queuedCount=queued;self.storageLow=low;[self notify];});
@@ -148,8 +151,8 @@ static NSError *QError(NSString *s){return [NSError errorWithDomain:@"MarkCam.Qu
  if(!next){if(self.pendingCount&&!self.manuallyPaused)self.summary=@"有失败/未完整作品，请在待保存查看";[self notify];return;}
  self.processing=YES;[self beginLease];self.activeMeta=next;self.stopRequested=NO;self.summary=@"异步合成中，可继续拍普通照片";[self notify];
  dispatch_async(self.io,^{@autoreleasepool{
-  NSMutableDictionary *job=[self readJob:next];NSString *kind=job[@"kind"],*stage=job[@"stage"];
-  BOOL valid=[@[@"photo",@"live",@"video"]containsObject:kind]&&[WMEngine isValidSettingsSnapshot:job[@"settings"]]&&[job[@"date"]isKindOfClass:NSNumber.class]&&isfinite([job[@"date"]doubleValue]);
+  NSMutableDictionary *job=[self readJob:next];NSString *stage=job[@"stage"];
+  BOOL valid=QValidJob(job);
   if(!valid||job[@"queueBlocked"]||![@[@"raw",@"ready",@"saved"]containsObject:stage]){dispatch_async(dispatch_get_main_queue(),^{[self.blocked addObject:next.path];[self finish:QError(@"恢复信息不完整或已暂停，请在待保存查看") job:job meta:next block:YES];});return;}
   if([stage isEqual:@"saved"]){[self.class cleanupJob:job meta:next];dispatch_async(dispatch_get_main_queue(),^{[self finish:nil job:nil meta:next block:NO];});return;}
   dispatch_async(dispatch_get_main_queue(),^{[self beginJob:job meta:next];});

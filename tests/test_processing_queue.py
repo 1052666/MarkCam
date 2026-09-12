@@ -33,6 +33,7 @@ resume = method('- (void)resumeAfterPhotoAuthorization {', '- (NSMutableDictiona
 save = method('- (void)save:', '- (void)commitPhotos:')
 admission = method('- (NSString *)captureBlockReasonForLive:', '- (void)pause')
 check('Every tick refreshes shutter before render and pressure early returns', tick.index('[self notify]') < tick.index('if(self.processing)') < tick.index('MCCanRender('))
+check('Historical recovery records do not occupy the transient capture budget', 'MIN(self.queuedCount' in admission and 'QValidJob(job)&&!job[@"queueBlocked"]' in queue)
 check('Controller admission passes held requests to shared capacity policy', 'MCCaptureAdmission(' in admission and 'MIN(reserved,(NSUInteger)UINT_MAX)' in admission)
 check('Permission resume waits for processing or scan to finish', 'if(self.processing||self.scanning)return;' in resume and 'self.scanning=YES' in resume)
 check('Permission resume only rewrites ready blocked permission jobs', 'MCShouldResumePermissionJob([job[@"stage"]isEqual:@"ready"],job[@"queueBlocked"]!=nil,permission)' in resume)
@@ -45,7 +46,7 @@ check('Renderer reports a typed transient memory shortage', 'code:MCPhotoRendere
 transient = failure.split('if([error.domain isEqual:MCPhotoRendererErrorDomain]', 1)[1].split('job[@"queueBlocked"]', 1)[0]
 check('Transient memory shortage waits and preserves automatic retry', 'error.code==MCPhotoRendererErrorInsufficientMemory' in transient and 'self.pressureUntil=CACurrentMediaTime()+15' in transient and 'block:NO];return;' in transient)
 check('Successful Photos transaction is logged before deleting source files', 'logged=[self.class writeJob:job URL:meta];if(logged)[self.class cleanupJob:job meta:meta]' in queue)
-check('Recovered job validates the complete settings schema before rendering or saving', '[WMEngine isValidSettingsSnapshot:job[@"settings"]]' in tick and '+ (BOOL)isValidSettingsSnapshot:(id)settings { return ValidSettings(settings); }' in engine)
+check('Recovered job validates the complete settings schema before rendering or saving', 'QValidJob(job)' in tick and '[WMEngine isValidSettingsSnapshot:job[@"settings"]]' in queue and '+ (BOOL)isValidSettingsSnapshot:(id)settings { return ValidSettings(settings); }' in engine)
 validator = engine.split('static BOOL ValidSettings(id s) {', 1)[1].split('static UIImage *Decode', 1)[0]
 check('Recovery schema rejects nonnumeric booleans before boolValue on the main queue', '@"keepOriginal"' in validator and '![s[k] isKindOfClass:NSNumber.class]' in validator)
 check('Recovery schema validates the layer array and every layer', '!ValidLayers(s[@"layers"])' in validator and '![layers isKindOfClass:NSArray.class]' in engine and 'if(![l isKindOfClass:NSDictionary.class])return NO' in engine)
