@@ -42,7 +42,7 @@ info={
 'CFBundleExecutable':'MarkCam','CFBundleIdentifier':'app.markcam.camera','CFBundleName':'MarkCam','CFBundleDisplayName':'印记相机',
 'CFBundlePackageType':'APPL','CFBundleInfoDictionaryVersion':'6.0','CFBundleShortVersionString':VERSION,'CFBundleVersion':BUILD_NUMBER,
 'MinimumOSVersion':'16.5','UIDeviceFamily':[1],'LSRequiresIPhoneOS':True,'UIRequiredDeviceCapabilities':['arm64'],
-'UILaunchScreen':{},'UIStatusBarStyle':'UIStatusBarStyleLightContent',
+'UILaunchScreen':{},
 'CFBundleSupportedPlatforms':['iPhoneOS'],'DTPlatformName':'iphoneos','DTSDKName':'iphoneos'+SDK_VERSION,
 'UIApplicationSceneManifest':{'UIApplicationSupportsMultipleScenes':False,'UISceneConfigurations':{'UIWindowSceneSessionRoleApplication':[{'UISceneConfigurationName':'Camera','UISceneDelegateClassName':'MCSceneDelegate'}]}},
 'UISupportedInterfaceOrientations':['UIInterfaceOrientationPortrait','UIInterfaceOrientationLandscapeLeft','UIInterfaceOrientationLandscapeRight'],

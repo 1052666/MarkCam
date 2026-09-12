@@ -22,6 +22,7 @@ void MCConfigureSymbol(UIButton *button, NSString *symbol, CGFloat size) {
         // UIKit owns the optical material and its touch response. The shutter
         // remains a separate immediate control with no decorative animation.
         self.overrideUserInterfaceStyle=UIUserInterfaceStyleDark;
+        self.tintColor=MCInterfaceAccent();
         if (@available(iOS 26.0,*)) {
             self.configuration=[UIButtonConfiguration glassButtonConfiguration];
         } else {

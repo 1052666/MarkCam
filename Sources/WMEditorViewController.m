@@ -178,6 +178,7 @@ static NSString *WMEHex(UIColor *color) {
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];self.navigationItem.leftBarButtonItem.enabled=self.sectionPicker.selectedSegmentIndex==0;
 }
+- (UIStatusBarStyle)preferredStatusBarStyle { return UIStatusBarStyleDefault; }
 - (void)viewWillDisappear:(BOOL)animated { [self flushContinuousChanges];[super viewWillDisappear:animated]; }
 - (void)traitCollectionDidChange:(UITraitCollection *)previous {
     [super traitCollectionDidChange:previous];[self.view setNeedsLayout];

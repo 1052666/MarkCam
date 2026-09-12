@@ -95,13 +95,13 @@ static BOOL QValidJob(NSDictionary *job){
   NSNumber *capacity=nil;[self.class.directory getResourceValue:&capacity forKey:NSURLVolumeAvailableCapacityForImportantUsageKey error:nil];
   BOOL low=capacity&&capacity.unsignedLongLongValue<256ULL*1024*1024;
   NSUInteger queued=0;
-  for(NSURL *url in files)if([url.lastPathComponent hasSuffix:@".job.json"]){
+  for(NSURL *url in files)if([url.lastPathComponent hasSuffix:@".job.json"]){@autoreleasepool{
    [jobs addObject:url];NSDictionary *job=[self readJob:url];
    // A killed process cannot finish its old capture or Photos transaction.
    // Keep those files for explicit recovery; never reset "saving" to "ready"
    // automatically (Photos may already have committed the asset).
    if(QValidJob(job)&&!job[@"queueBlocked"]&&([job[@"stage"]isEqual:@"raw"]||[job[@"stage"]isEqual:@"ready"]))queued++;
-  }
+  }}
   [jobs sortUsingComparator:^NSComparisonResult(NSURL *a,NSURL *b){return [a.lastPathComponent compare:b.lastPathComponent];}];
   dispatch_async(dispatch_get_main_queue(),^{self.scanning=NO;if(revision!=self.scanRevision){[self refresh];return;}self.jobs=jobs;self.pendingCount=jobs.count;self.queuedCount=queued;self.storageLow=low;[self notify];});
  }});

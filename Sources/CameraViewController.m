@@ -448,7 +448,7 @@ static NSString *MCID(void){return [NSString stringWithFormat:@"%013lld-%@",(lon
  if(!self.session.running){[self status:@"正在重新连接相机…"];[self resumeCameraSession];return;}
  NSString *reason=[self captureAdmissionReason];if(reason){[self status:reason];return;}
  PHAuthorizationStatus photos=[PHPhotoLibrary authorizationStatusForAccessLevel:PHAccessLevelAddOnly];if(photos==PHAuthorizationStatusNotDetermined){[self authorizeQueue];return;}
- if([self requestsLive]&&[AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio]!=AVAuthorizationStatusAuthorized){[self authorizeLive:^{[self refreshSettings];[self status:@"麦克风已开启，取景稳定后再次按快门拍摄 LIVE"]; }];return;}
+ if([self requestsLive]&&[AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio]!=AVAuthorizationStatusAuthorized){[self authorizeLive:^{[self refreshSettings];[self resumeCameraSession];[self status:@"麦克风已开启，取景稳定后再次按快门拍摄 LIVE"]; }];return;}
  NSInteger delay=[self.activeSettings[@"timerSeconds"]integerValue];
  if(delay>0){self.busy=YES;self.countdown=MIN(delay,10);NSInteger generation=++self.countdownGeneration;[self updateControls];[self countdownStep:generation];}else [self startCapture];
 }

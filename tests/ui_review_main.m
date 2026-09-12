@@ -152,10 +152,10 @@ static UIImage *Fixture(void) {
 @implementation ReviewHost
 - (void)show:(UIViewController *)controller {
     if(self.content){[self.content willMoveToParentViewController:nil];[self.content.view removeFromSuperview];[self.content removeFromParentViewController];}
-    self.content=controller;[self addChildViewController:controller];controller.view.frame=self.view.bounds;controller.view.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;[self.view addSubview:controller.view];[controller didMoveToParentViewController:self];
+    self.content=controller;[self addChildViewController:controller];controller.view.frame=self.view.bounds;controller.view.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;[self.view addSubview:controller.view];[controller didMoveToParentViewController:self];[self setNeedsStatusBarAppearanceUpdate];
 }
 - (UIInterfaceOrientationMask)supportedInterfaceOrientations { return UIInterfaceOrientationMaskAllButUpsideDown; }
-- (UIStatusBarStyle)preferredStatusBarStyle { return UIStatusBarStyleLightContent; }
+- (UIViewController *)childViewControllerForStatusBarStyle { return self.content; }
 @end
 
 @interface ReviewScene : UIResponder <UIWindowSceneDelegate>
@@ -228,6 +228,7 @@ static UIImage *Fixture(void) {
     UISegmentedControl *picker=[self.editor valueForKey:@"sectionPicker"];picker.selectedSegmentIndex=index;[picker sendActionsForControlEvents:UIControlEventValueChanged];
 }
 - (void)checkEditorTab:(NSInteger)tab {
+    Check(@"Editor status bar adapts to the system appearance",self.editor.preferredStatusBarStyle==UIStatusBarStyleDefault);
     UITableView *table=[self.editor valueForKey:@"table"];
     Check([NSString stringWithFormat:@"Tab %ld contains only relevant sections",(long)tab],table.numberOfSections==(tab==0?2:1));
     for(NSInteger section=0;section<table.numberOfSections;section++){
