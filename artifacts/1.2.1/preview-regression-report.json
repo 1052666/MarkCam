@@ -1,0 +1,2031 @@
+{
+  "scope": "Host-executed native C geometry/zoom + static contracts; not camera or UIKit runtime, not measured FPS",
+  "passed": 506,
+  "failed": 0,
+  "checks": [
+    {
+      "check": "mini-photo-portrait preserves field aspect",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-portrait bounds stage",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-portrait bounds mode",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-portrait bounds shutter",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-portrait bounds files",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-portrait bounds flip",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-portrait bounds edit",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-portrait bounds watermark",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-portrait bounds live",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-portrait bounds settings",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-portrait preview avoids shutter",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-portrait preview avoids mode",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-portrait preview avoids files",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-portrait preview avoids flip",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-portrait preview avoids edit",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-portrait shutter separate from editor",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-portrait stage-local bounds hint",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-portrait stage-local bounds lenses",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-portrait stage-local bounds zoomLabel",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-portrait stage-local bounds zoomSlider",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-portrait zoom touch targets",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-portrait larger than v1.1.0",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-portrait full width",
+      "passed": true
+    },
+    {
+      "check": "mini-video-portrait preserves field aspect",
+      "passed": true
+    },
+    {
+      "check": "mini-video-portrait bounds stage",
+      "passed": true
+    },
+    {
+      "check": "mini-video-portrait bounds mode",
+      "passed": true
+    },
+    {
+      "check": "mini-video-portrait bounds shutter",
+      "passed": true
+    },
+    {
+      "check": "mini-video-portrait bounds files",
+      "passed": true
+    },
+    {
+      "check": "mini-video-portrait bounds flip",
+      "passed": true
+    },
+    {
+      "check": "mini-video-portrait bounds edit",
+      "passed": true
+    },
+    {
+      "check": "mini-video-portrait bounds watermark",
+      "passed": true
+    },
+    {
+      "check": "mini-video-portrait bounds live",
+      "passed": true
+    },
+    {
+      "check": "mini-video-portrait bounds settings",
+      "passed": true
+    },
+    {
+      "check": "mini-video-portrait video floating lenses avoids shutter",
+      "passed": true
+    },
+    {
+      "check": "mini-video-portrait video floating zoomLabel avoids shutter",
+      "passed": true
+    },
+    {
+      "check": "mini-video-portrait video floating zoomSlider avoids shutter",
+      "passed": true
+    },
+    {
+      "check": "mini-video-portrait video floating lenses avoids mode",
+      "passed": true
+    },
+    {
+      "check": "mini-video-portrait video floating zoomLabel avoids mode",
+      "passed": true
+    },
+    {
+      "check": "mini-video-portrait video floating zoomSlider avoids mode",
+      "passed": true
+    },
+    {
+      "check": "mini-video-portrait video floating lenses avoids files",
+      "passed": true
+    },
+    {
+      "check": "mini-video-portrait video floating zoomLabel avoids files",
+      "passed": true
+    },
+    {
+      "check": "mini-video-portrait video floating zoomSlider avoids files",
+      "passed": true
+    },
+    {
+      "check": "mini-video-portrait video floating lenses avoids flip",
+      "passed": true
+    },
+    {
+      "check": "mini-video-portrait video floating zoomLabel avoids flip",
+      "passed": true
+    },
+    {
+      "check": "mini-video-portrait video floating zoomSlider avoids flip",
+      "passed": true
+    },
+    {
+      "check": "mini-video-portrait video floating lenses avoids edit",
+      "passed": true
+    },
+    {
+      "check": "mini-video-portrait video floating zoomLabel avoids edit",
+      "passed": true
+    },
+    {
+      "check": "mini-video-portrait video floating zoomSlider avoids edit",
+      "passed": true
+    },
+    {
+      "check": "mini-video-portrait full width video",
+      "passed": true
+    },
+    {
+      "check": "mini-video-portrait shutter separate from editor",
+      "passed": true
+    },
+    {
+      "check": "mini-video-portrait stage-local bounds hint",
+      "passed": true
+    },
+    {
+      "check": "mini-video-portrait stage-local bounds lenses",
+      "passed": true
+    },
+    {
+      "check": "mini-video-portrait stage-local bounds zoomLabel",
+      "passed": true
+    },
+    {
+      "check": "mini-video-portrait stage-local bounds zoomSlider",
+      "passed": true
+    },
+    {
+      "check": "mini-video-portrait zoom touch targets",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-landscape preserves field aspect",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-landscape bounds stage",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-landscape bounds mode",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-landscape bounds shutter",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-landscape bounds files",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-landscape bounds flip",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-landscape bounds edit",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-landscape bounds watermark",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-landscape bounds live",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-landscape bounds settings",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-landscape preview avoids shutter",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-landscape preview avoids mode",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-landscape preview avoids files",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-landscape preview avoids flip",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-landscape preview avoids edit",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-landscape shutter separate from editor",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-landscape stage-local bounds hint",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-landscape stage-local bounds lenses",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-landscape stage-local bounds zoomLabel",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-landscape stage-local bounds zoomSlider",
+      "passed": true
+    },
+    {
+      "check": "mini-photo-landscape zoom touch targets",
+      "passed": true
+    },
+    {
+      "check": "mini-video-landscape preserves field aspect",
+      "passed": true
+    },
+    {
+      "check": "mini-video-landscape bounds stage",
+      "passed": true
+    },
+    {
+      "check": "mini-video-landscape bounds mode",
+      "passed": true
+    },
+    {
+      "check": "mini-video-landscape bounds shutter",
+      "passed": true
+    },
+    {
+      "check": "mini-video-landscape bounds files",
+      "passed": true
+    },
+    {
+      "check": "mini-video-landscape bounds flip",
+      "passed": true
+    },
+    {
+      "check": "mini-video-landscape bounds edit",
+      "passed": true
+    },
+    {
+      "check": "mini-video-landscape bounds watermark",
+      "passed": true
+    },
+    {
+      "check": "mini-video-landscape bounds live",
+      "passed": true
+    },
+    {
+      "check": "mini-video-landscape bounds settings",
+      "passed": true
+    },
+    {
+      "check": "mini-video-landscape preview avoids shutter",
+      "passed": true
+    },
+    {
+      "check": "mini-video-landscape preview avoids mode",
+      "passed": true
+    },
+    {
+      "check": "mini-video-landscape preview avoids files",
+      "passed": true
+    },
+    {
+      "check": "mini-video-landscape preview avoids flip",
+      "passed": true
+    },
+    {
+      "check": "mini-video-landscape preview avoids edit",
+      "passed": true
+    },
+    {
+      "check": "mini-video-landscape shutter separate from editor",
+      "passed": true
+    },
+    {
+      "check": "mini-video-landscape stage-local bounds hint",
+      "passed": true
+    },
+    {
+      "check": "mini-video-landscape stage-local bounds lenses",
+      "passed": true
+    },
+    {
+      "check": "mini-video-landscape stage-local bounds zoomLabel",
+      "passed": true
+    },
+    {
+      "check": "mini-video-landscape stage-local bounds zoomSlider",
+      "passed": true
+    },
+    {
+      "check": "mini-video-landscape zoom touch targets",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-portrait preserves field aspect",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-portrait bounds stage",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-portrait bounds mode",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-portrait bounds shutter",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-portrait bounds files",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-portrait bounds flip",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-portrait bounds edit",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-portrait bounds watermark",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-portrait bounds live",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-portrait bounds settings",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-portrait preview avoids shutter",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-portrait preview avoids mode",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-portrait preview avoids files",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-portrait preview avoids flip",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-portrait preview avoids edit",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-portrait shutter separate from editor",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-portrait stage-local bounds hint",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-portrait stage-local bounds lenses",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-portrait stage-local bounds zoomLabel",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-portrait stage-local bounds zoomSlider",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-portrait zoom touch targets",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-portrait larger than v1.1.0",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-portrait full width",
+      "passed": true
+    },
+    {
+      "check": "standard-video-portrait preserves field aspect",
+      "passed": true
+    },
+    {
+      "check": "standard-video-portrait bounds stage",
+      "passed": true
+    },
+    {
+      "check": "standard-video-portrait bounds mode",
+      "passed": true
+    },
+    {
+      "check": "standard-video-portrait bounds shutter",
+      "passed": true
+    },
+    {
+      "check": "standard-video-portrait bounds files",
+      "passed": true
+    },
+    {
+      "check": "standard-video-portrait bounds flip",
+      "passed": true
+    },
+    {
+      "check": "standard-video-portrait bounds edit",
+      "passed": true
+    },
+    {
+      "check": "standard-video-portrait bounds watermark",
+      "passed": true
+    },
+    {
+      "check": "standard-video-portrait bounds live",
+      "passed": true
+    },
+    {
+      "check": "standard-video-portrait bounds settings",
+      "passed": true
+    },
+    {
+      "check": "standard-video-portrait video floating lenses avoids shutter",
+      "passed": true
+    },
+    {
+      "check": "standard-video-portrait video floating zoomLabel avoids shutter",
+      "passed": true
+    },
+    {
+      "check": "standard-video-portrait video floating zoomSlider avoids shutter",
+      "passed": true
+    },
+    {
+      "check": "standard-video-portrait video floating lenses avoids mode",
+      "passed": true
+    },
+    {
+      "check": "standard-video-portrait video floating zoomLabel avoids mode",
+      "passed": true
+    },
+    {
+      "check": "standard-video-portrait video floating zoomSlider avoids mode",
+      "passed": true
+    },
+    {
+      "check": "standard-video-portrait video floating lenses avoids files",
+      "passed": true
+    },
+    {
+      "check": "standard-video-portrait video floating zoomLabel avoids files",
+      "passed": true
+    },
+    {
+      "check": "standard-video-portrait video floating zoomSlider avoids files",
+      "passed": true
+    },
+    {
+      "check": "standard-video-portrait video floating lenses avoids flip",
+      "passed": true
+    },
+    {
+      "check": "standard-video-portrait video floating zoomLabel avoids flip",
+      "passed": true
+    },
+    {
+      "check": "standard-video-portrait video floating zoomSlider avoids flip",
+      "passed": true
+    },
+    {
+      "check": "standard-video-portrait video floating lenses avoids edit",
+      "passed": true
+    },
+    {
+      "check": "standard-video-portrait video floating zoomLabel avoids edit",
+      "passed": true
+    },
+    {
+      "check": "standard-video-portrait video floating zoomSlider avoids edit",
+      "passed": true
+    },
+    {
+      "check": "standard-video-portrait full width video",
+      "passed": true
+    },
+    {
+      "check": "standard-video-portrait shutter separate from editor",
+      "passed": true
+    },
+    {
+      "check": "standard-video-portrait stage-local bounds hint",
+      "passed": true
+    },
+    {
+      "check": "standard-video-portrait stage-local bounds lenses",
+      "passed": true
+    },
+    {
+      "check": "standard-video-portrait stage-local bounds zoomLabel",
+      "passed": true
+    },
+    {
+      "check": "standard-video-portrait stage-local bounds zoomSlider",
+      "passed": true
+    },
+    {
+      "check": "standard-video-portrait zoom touch targets",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-landscape preserves field aspect",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-landscape bounds stage",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-landscape bounds mode",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-landscape bounds shutter",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-landscape bounds files",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-landscape bounds flip",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-landscape bounds edit",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-landscape bounds watermark",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-landscape bounds live",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-landscape bounds settings",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-landscape preview avoids shutter",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-landscape preview avoids mode",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-landscape preview avoids files",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-landscape preview avoids flip",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-landscape preview avoids edit",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-landscape shutter separate from editor",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-landscape stage-local bounds hint",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-landscape stage-local bounds lenses",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-landscape stage-local bounds zoomLabel",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-landscape stage-local bounds zoomSlider",
+      "passed": true
+    },
+    {
+      "check": "standard-photo-landscape zoom touch targets",
+      "passed": true
+    },
+    {
+      "check": "standard-video-landscape preserves field aspect",
+      "passed": true
+    },
+    {
+      "check": "standard-video-landscape bounds stage",
+      "passed": true
+    },
+    {
+      "check": "standard-video-landscape bounds mode",
+      "passed": true
+    },
+    {
+      "check": "standard-video-landscape bounds shutter",
+      "passed": true
+    },
+    {
+      "check": "standard-video-landscape bounds files",
+      "passed": true
+    },
+    {
+      "check": "standard-video-landscape bounds flip",
+      "passed": true
+    },
+    {
+      "check": "standard-video-landscape bounds edit",
+      "passed": true
+    },
+    {
+      "check": "standard-video-landscape bounds watermark",
+      "passed": true
+    },
+    {
+      "check": "standard-video-landscape bounds live",
+      "passed": true
+    },
+    {
+      "check": "standard-video-landscape bounds settings",
+      "passed": true
+    },
+    {
+      "check": "standard-video-landscape preview avoids shutter",
+      "passed": true
+    },
+    {
+      "check": "standard-video-landscape preview avoids mode",
+      "passed": true
+    },
+    {
+      "check": "standard-video-landscape preview avoids files",
+      "passed": true
+    },
+    {
+      "check": "standard-video-landscape preview avoids flip",
+      "passed": true
+    },
+    {
+      "check": "standard-video-landscape preview avoids edit",
+      "passed": true
+    },
+    {
+      "check": "standard-video-landscape shutter separate from editor",
+      "passed": true
+    },
+    {
+      "check": "standard-video-landscape stage-local bounds hint",
+      "passed": true
+    },
+    {
+      "check": "standard-video-landscape stage-local bounds lenses",
+      "passed": true
+    },
+    {
+      "check": "standard-video-landscape stage-local bounds zoomLabel",
+      "passed": true
+    },
+    {
+      "check": "standard-video-landscape stage-local bounds zoomSlider",
+      "passed": true
+    },
+    {
+      "check": "standard-video-landscape zoom touch targets",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-portrait preserves field aspect",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-portrait bounds stage",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-portrait bounds mode",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-portrait bounds shutter",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-portrait bounds files",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-portrait bounds flip",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-portrait bounds edit",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-portrait bounds watermark",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-portrait bounds live",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-portrait bounds settings",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-portrait preview avoids shutter",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-portrait preview avoids mode",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-portrait preview avoids files",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-portrait preview avoids flip",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-portrait preview avoids edit",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-portrait shutter separate from editor",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-portrait stage-local bounds hint",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-portrait stage-local bounds lenses",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-portrait stage-local bounds zoomLabel",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-portrait stage-local bounds zoomSlider",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-portrait zoom touch targets",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-portrait larger than v1.1.0",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-portrait full width",
+      "passed": true
+    },
+    {
+      "check": "pro-video-portrait preserves field aspect",
+      "passed": true
+    },
+    {
+      "check": "pro-video-portrait bounds stage",
+      "passed": true
+    },
+    {
+      "check": "pro-video-portrait bounds mode",
+      "passed": true
+    },
+    {
+      "check": "pro-video-portrait bounds shutter",
+      "passed": true
+    },
+    {
+      "check": "pro-video-portrait bounds files",
+      "passed": true
+    },
+    {
+      "check": "pro-video-portrait bounds flip",
+      "passed": true
+    },
+    {
+      "check": "pro-video-portrait bounds edit",
+      "passed": true
+    },
+    {
+      "check": "pro-video-portrait bounds watermark",
+      "passed": true
+    },
+    {
+      "check": "pro-video-portrait bounds live",
+      "passed": true
+    },
+    {
+      "check": "pro-video-portrait bounds settings",
+      "passed": true
+    },
+    {
+      "check": "pro-video-portrait video floating lenses avoids shutter",
+      "passed": true
+    },
+    {
+      "check": "pro-video-portrait video floating zoomLabel avoids shutter",
+      "passed": true
+    },
+    {
+      "check": "pro-video-portrait video floating zoomSlider avoids shutter",
+      "passed": true
+    },
+    {
+      "check": "pro-video-portrait video floating lenses avoids mode",
+      "passed": true
+    },
+    {
+      "check": "pro-video-portrait video floating zoomLabel avoids mode",
+      "passed": true
+    },
+    {
+      "check": "pro-video-portrait video floating zoomSlider avoids mode",
+      "passed": true
+    },
+    {
+      "check": "pro-video-portrait video floating lenses avoids files",
+      "passed": true
+    },
+    {
+      "check": "pro-video-portrait video floating zoomLabel avoids files",
+      "passed": true
+    },
+    {
+      "check": "pro-video-portrait video floating zoomSlider avoids files",
+      "passed": true
+    },
+    {
+      "check": "pro-video-portrait video floating lenses avoids flip",
+      "passed": true
+    },
+    {
+      "check": "pro-video-portrait video floating zoomLabel avoids flip",
+      "passed": true
+    },
+    {
+      "check": "pro-video-portrait video floating zoomSlider avoids flip",
+      "passed": true
+    },
+    {
+      "check": "pro-video-portrait video floating lenses avoids edit",
+      "passed": true
+    },
+    {
+      "check": "pro-video-portrait video floating zoomLabel avoids edit",
+      "passed": true
+    },
+    {
+      "check": "pro-video-portrait video floating zoomSlider avoids edit",
+      "passed": true
+    },
+    {
+      "check": "pro-video-portrait full width video",
+      "passed": true
+    },
+    {
+      "check": "pro-video-portrait shutter separate from editor",
+      "passed": true
+    },
+    {
+      "check": "pro-video-portrait stage-local bounds hint",
+      "passed": true
+    },
+    {
+      "check": "pro-video-portrait stage-local bounds lenses",
+      "passed": true
+    },
+    {
+      "check": "pro-video-portrait stage-local bounds zoomLabel",
+      "passed": true
+    },
+    {
+      "check": "pro-video-portrait stage-local bounds zoomSlider",
+      "passed": true
+    },
+    {
+      "check": "pro-video-portrait zoom touch targets",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-landscape preserves field aspect",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-landscape bounds stage",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-landscape bounds mode",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-landscape bounds shutter",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-landscape bounds files",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-landscape bounds flip",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-landscape bounds edit",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-landscape bounds watermark",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-landscape bounds live",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-landscape bounds settings",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-landscape preview avoids shutter",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-landscape preview avoids mode",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-landscape preview avoids files",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-landscape preview avoids flip",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-landscape preview avoids edit",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-landscape shutter separate from editor",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-landscape stage-local bounds hint",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-landscape stage-local bounds lenses",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-landscape stage-local bounds zoomLabel",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-landscape stage-local bounds zoomSlider",
+      "passed": true
+    },
+    {
+      "check": "pro-photo-landscape zoom touch targets",
+      "passed": true
+    },
+    {
+      "check": "pro-video-landscape preserves field aspect",
+      "passed": true
+    },
+    {
+      "check": "pro-video-landscape bounds stage",
+      "passed": true
+    },
+    {
+      "check": "pro-video-landscape bounds mode",
+      "passed": true
+    },
+    {
+      "check": "pro-video-landscape bounds shutter",
+      "passed": true
+    },
+    {
+      "check": "pro-video-landscape bounds files",
+      "passed": true
+    },
+    {
+      "check": "pro-video-landscape bounds flip",
+      "passed": true
+    },
+    {
+      "check": "pro-video-landscape bounds edit",
+      "passed": true
+    },
+    {
+      "check": "pro-video-landscape bounds watermark",
+      "passed": true
+    },
+    {
+      "check": "pro-video-landscape bounds live",
+      "passed": true
+    },
+    {
+      "check": "pro-video-landscape bounds settings",
+      "passed": true
+    },
+    {
+      "check": "pro-video-landscape preview avoids shutter",
+      "passed": true
+    },
+    {
+      "check": "pro-video-landscape preview avoids mode",
+      "passed": true
+    },
+    {
+      "check": "pro-video-landscape preview avoids files",
+      "passed": true
+    },
+    {
+      "check": "pro-video-landscape preview avoids flip",
+      "passed": true
+    },
+    {
+      "check": "pro-video-landscape preview avoids edit",
+      "passed": true
+    },
+    {
+      "check": "pro-video-landscape shutter separate from editor",
+      "passed": true
+    },
+    {
+      "check": "pro-video-landscape stage-local bounds hint",
+      "passed": true
+    },
+    {
+      "check": "pro-video-landscape stage-local bounds lenses",
+      "passed": true
+    },
+    {
+      "check": "pro-video-landscape stage-local bounds zoomLabel",
+      "passed": true
+    },
+    {
+      "check": "pro-video-landscape stage-local bounds zoomSlider",
+      "passed": true
+    },
+    {
+      "check": "pro-video-landscape zoom touch targets",
+      "passed": true
+    },
+    {
+      "check": "large-photo-portrait preserves field aspect",
+      "passed": true
+    },
+    {
+      "check": "large-photo-portrait bounds stage",
+      "passed": true
+    },
+    {
+      "check": "large-photo-portrait bounds mode",
+      "passed": true
+    },
+    {
+      "check": "large-photo-portrait bounds shutter",
+      "passed": true
+    },
+    {
+      "check": "large-photo-portrait bounds files",
+      "passed": true
+    },
+    {
+      "check": "large-photo-portrait bounds flip",
+      "passed": true
+    },
+    {
+      "check": "large-photo-portrait bounds edit",
+      "passed": true
+    },
+    {
+      "check": "large-photo-portrait bounds watermark",
+      "passed": true
+    },
+    {
+      "check": "large-photo-portrait bounds live",
+      "passed": true
+    },
+    {
+      "check": "large-photo-portrait bounds settings",
+      "passed": true
+    },
+    {
+      "check": "large-photo-portrait preview avoids shutter",
+      "passed": true
+    },
+    {
+      "check": "large-photo-portrait preview avoids mode",
+      "passed": true
+    },
+    {
+      "check": "large-photo-portrait preview avoids files",
+      "passed": true
+    },
+    {
+      "check": "large-photo-portrait preview avoids flip",
+      "passed": true
+    },
+    {
+      "check": "large-photo-portrait preview avoids edit",
+      "passed": true
+    },
+    {
+      "check": "large-photo-portrait shutter separate from editor",
+      "passed": true
+    },
+    {
+      "check": "large-photo-portrait stage-local bounds hint",
+      "passed": true
+    },
+    {
+      "check": "large-photo-portrait stage-local bounds lenses",
+      "passed": true
+    },
+    {
+      "check": "large-photo-portrait stage-local bounds zoomLabel",
+      "passed": true
+    },
+    {
+      "check": "large-photo-portrait stage-local bounds zoomSlider",
+      "passed": true
+    },
+    {
+      "check": "large-photo-portrait zoom touch targets",
+      "passed": true
+    },
+    {
+      "check": "large-photo-portrait larger than v1.1.0",
+      "passed": true
+    },
+    {
+      "check": "large-photo-portrait full width",
+      "passed": true
+    },
+    {
+      "check": "large-video-portrait preserves field aspect",
+      "passed": true
+    },
+    {
+      "check": "large-video-portrait bounds stage",
+      "passed": true
+    },
+    {
+      "check": "large-video-portrait bounds mode",
+      "passed": true
+    },
+    {
+      "check": "large-video-portrait bounds shutter",
+      "passed": true
+    },
+    {
+      "check": "large-video-portrait bounds files",
+      "passed": true
+    },
+    {
+      "check": "large-video-portrait bounds flip",
+      "passed": true
+    },
+    {
+      "check": "large-video-portrait bounds edit",
+      "passed": true
+    },
+    {
+      "check": "large-video-portrait bounds watermark",
+      "passed": true
+    },
+    {
+      "check": "large-video-portrait bounds live",
+      "passed": true
+    },
+    {
+      "check": "large-video-portrait bounds settings",
+      "passed": true
+    },
+    {
+      "check": "large-video-portrait video floating lenses avoids shutter",
+      "passed": true
+    },
+    {
+      "check": "large-video-portrait video floating zoomLabel avoids shutter",
+      "passed": true
+    },
+    {
+      "check": "large-video-portrait video floating zoomSlider avoids shutter",
+      "passed": true
+    },
+    {
+      "check": "large-video-portrait video floating lenses avoids mode",
+      "passed": true
+    },
+    {
+      "check": "large-video-portrait video floating zoomLabel avoids mode",
+      "passed": true
+    },
+    {
+      "check": "large-video-portrait video floating zoomSlider avoids mode",
+      "passed": true
+    },
+    {
+      "check": "large-video-portrait video floating lenses avoids files",
+      "passed": true
+    },
+    {
+      "check": "large-video-portrait video floating zoomLabel avoids files",
+      "passed": true
+    },
+    {
+      "check": "large-video-portrait video floating zoomSlider avoids files",
+      "passed": true
+    },
+    {
+      "check": "large-video-portrait video floating lenses avoids flip",
+      "passed": true
+    },
+    {
+      "check": "large-video-portrait video floating zoomLabel avoids flip",
+      "passed": true
+    },
+    {
+      "check": "large-video-portrait video floating zoomSlider avoids flip",
+      "passed": true
+    },
+    {
+      "check": "large-video-portrait video floating lenses avoids edit",
+      "passed": true
+    },
+    {
+      "check": "large-video-portrait video floating zoomLabel avoids edit",
+      "passed": true
+    },
+    {
+      "check": "large-video-portrait video floating zoomSlider avoids edit",
+      "passed": true
+    },
+    {
+      "check": "large-video-portrait full width video",
+      "passed": true
+    },
+    {
+      "check": "large-video-portrait shutter separate from editor",
+      "passed": true
+    },
+    {
+      "check": "large-video-portrait stage-local bounds hint",
+      "passed": true
+    },
+    {
+      "check": "large-video-portrait stage-local bounds lenses",
+      "passed": true
+    },
+    {
+      "check": "large-video-portrait stage-local bounds zoomLabel",
+      "passed": true
+    },
+    {
+      "check": "large-video-portrait stage-local bounds zoomSlider",
+      "passed": true
+    },
+    {
+      "check": "large-video-portrait zoom touch targets",
+      "passed": true
+    },
+    {
+      "check": "large-photo-landscape preserves field aspect",
+      "passed": true
+    },
+    {
+      "check": "large-photo-landscape bounds stage",
+      "passed": true
+    },
+    {
+      "check": "large-photo-landscape bounds mode",
+      "passed": true
+    },
+    {
+      "check": "large-photo-landscape bounds shutter",
+      "passed": true
+    },
+    {
+      "check": "large-photo-landscape bounds files",
+      "passed": true
+    },
+    {
+      "check": "large-photo-landscape bounds flip",
+      "passed": true
+    },
+    {
+      "check": "large-photo-landscape bounds edit",
+      "passed": true
+    },
+    {
+      "check": "large-photo-landscape bounds watermark",
+      "passed": true
+    },
+    {
+      "check": "large-photo-landscape bounds live",
+      "passed": true
+    },
+    {
+      "check": "large-photo-landscape bounds settings",
+      "passed": true
+    },
+    {
+      "check": "large-photo-landscape preview avoids shutter",
+      "passed": true
+    },
+    {
+      "check": "large-photo-landscape preview avoids mode",
+      "passed": true
+    },
+    {
+      "check": "large-photo-landscape preview avoids files",
+      "passed": true
+    },
+    {
+      "check": "large-photo-landscape preview avoids flip",
+      "passed": true
+    },
+    {
+      "check": "large-photo-landscape preview avoids edit",
+      "passed": true
+    },
+    {
+      "check": "large-photo-landscape shutter separate from editor",
+      "passed": true
+    },
+    {
+      "check": "large-photo-landscape stage-local bounds hint",
+      "passed": true
+    },
+    {
+      "check": "large-photo-landscape stage-local bounds lenses",
+      "passed": true
+    },
+    {
+      "check": "large-photo-landscape stage-local bounds zoomLabel",
+      "passed": true
+    },
+    {
+      "check": "large-photo-landscape stage-local bounds zoomSlider",
+      "passed": true
+    },
+    {
+      "check": "large-photo-landscape zoom touch targets",
+      "passed": true
+    },
+    {
+      "check": "large-video-landscape preserves field aspect",
+      "passed": true
+    },
+    {
+      "check": "large-video-landscape bounds stage",
+      "passed": true
+    },
+    {
+      "check": "large-video-landscape bounds mode",
+      "passed": true
+    },
+    {
+      "check": "large-video-landscape bounds shutter",
+      "passed": true
+    },
+    {
+      "check": "large-video-landscape bounds files",
+      "passed": true
+    },
+    {
+      "check": "large-video-landscape bounds flip",
+      "passed": true
+    },
+    {
+      "check": "large-video-landscape bounds edit",
+      "passed": true
+    },
+    {
+      "check": "large-video-landscape bounds watermark",
+      "passed": true
+    },
+    {
+      "check": "large-video-landscape bounds live",
+      "passed": true
+    },
+    {
+      "check": "large-video-landscape bounds settings",
+      "passed": true
+    },
+    {
+      "check": "large-video-landscape preview avoids shutter",
+      "passed": true
+    },
+    {
+      "check": "large-video-landscape preview avoids mode",
+      "passed": true
+    },
+    {
+      "check": "large-video-landscape preview avoids files",
+      "passed": true
+    },
+    {
+      "check": "large-video-landscape preview avoids flip",
+      "passed": true
+    },
+    {
+      "check": "large-video-landscape preview avoids edit",
+      "passed": true
+    },
+    {
+      "check": "large-video-landscape shutter separate from editor",
+      "passed": true
+    },
+    {
+      "check": "large-video-landscape stage-local bounds hint",
+      "passed": true
+    },
+    {
+      "check": "large-video-landscape stage-local bounds lenses",
+      "passed": true
+    },
+    {
+      "check": "large-video-landscape stage-local bounds zoomLabel",
+      "passed": true
+    },
+    {
+      "check": "large-video-landscape stage-local bounds zoomSlider",
+      "passed": true
+    },
+    {
+      "check": "large-video-landscape zoom touch targets",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-portrait preserves field aspect",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-portrait bounds stage",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-portrait bounds mode",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-portrait bounds shutter",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-portrait bounds files",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-portrait bounds flip",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-portrait bounds edit",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-portrait bounds watermark",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-portrait bounds live",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-portrait bounds settings",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-portrait preview avoids shutter",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-portrait preview avoids mode",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-portrait preview avoids files",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-portrait preview avoids flip",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-portrait preview avoids edit",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-portrait shutter separate from editor",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-portrait stage-local bounds hint",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-portrait stage-local bounds lenses",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-portrait stage-local bounds zoomLabel",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-portrait stage-local bounds zoomSlider",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-portrait zoom touch targets",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-portrait larger than v1.1.0",
+      "passed": true
+    },
+    {
+      "check": "SE-video-portrait preserves field aspect",
+      "passed": true
+    },
+    {
+      "check": "SE-video-portrait bounds stage",
+      "passed": true
+    },
+    {
+      "check": "SE-video-portrait bounds mode",
+      "passed": true
+    },
+    {
+      "check": "SE-video-portrait bounds shutter",
+      "passed": true
+    },
+    {
+      "check": "SE-video-portrait bounds files",
+      "passed": true
+    },
+    {
+      "check": "SE-video-portrait bounds flip",
+      "passed": true
+    },
+    {
+      "check": "SE-video-portrait bounds edit",
+      "passed": true
+    },
+    {
+      "check": "SE-video-portrait bounds watermark",
+      "passed": true
+    },
+    {
+      "check": "SE-video-portrait bounds live",
+      "passed": true
+    },
+    {
+      "check": "SE-video-portrait bounds settings",
+      "passed": true
+    },
+    {
+      "check": "SE-video-portrait video floating lenses avoids shutter",
+      "passed": true
+    },
+    {
+      "check": "SE-video-portrait video floating zoomLabel avoids shutter",
+      "passed": true
+    },
+    {
+      "check": "SE-video-portrait video floating zoomSlider avoids shutter",
+      "passed": true
+    },
+    {
+      "check": "SE-video-portrait video floating lenses avoids mode",
+      "passed": true
+    },
+    {
+      "check": "SE-video-portrait video floating zoomLabel avoids mode",
+      "passed": true
+    },
+    {
+      "check": "SE-video-portrait video floating zoomSlider avoids mode",
+      "passed": true
+    },
+    {
+      "check": "SE-video-portrait video floating lenses avoids files",
+      "passed": true
+    },
+    {
+      "check": "SE-video-portrait video floating zoomLabel avoids files",
+      "passed": true
+    },
+    {
+      "check": "SE-video-portrait video floating zoomSlider avoids files",
+      "passed": true
+    },
+    {
+      "check": "SE-video-portrait video floating lenses avoids flip",
+      "passed": true
+    },
+    {
+      "check": "SE-video-portrait video floating zoomLabel avoids flip",
+      "passed": true
+    },
+    {
+      "check": "SE-video-portrait video floating zoomSlider avoids flip",
+      "passed": true
+    },
+    {
+      "check": "SE-video-portrait video floating lenses avoids edit",
+      "passed": true
+    },
+    {
+      "check": "SE-video-portrait video floating zoomLabel avoids edit",
+      "passed": true
+    },
+    {
+      "check": "SE-video-portrait video floating zoomSlider avoids edit",
+      "passed": true
+    },
+    {
+      "check": "SE-video-portrait shutter separate from editor",
+      "passed": true
+    },
+    {
+      "check": "SE-video-portrait stage-local bounds hint",
+      "passed": true
+    },
+    {
+      "check": "SE-video-portrait stage-local bounds lenses",
+      "passed": true
+    },
+    {
+      "check": "SE-video-portrait stage-local bounds zoomLabel",
+      "passed": true
+    },
+    {
+      "check": "SE-video-portrait stage-local bounds zoomSlider",
+      "passed": true
+    },
+    {
+      "check": "SE-video-portrait zoom touch targets",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-landscape preserves field aspect",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-landscape bounds stage",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-landscape bounds mode",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-landscape bounds shutter",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-landscape bounds files",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-landscape bounds flip",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-landscape bounds edit",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-landscape bounds watermark",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-landscape bounds live",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-landscape bounds settings",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-landscape preview avoids shutter",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-landscape preview avoids mode",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-landscape preview avoids files",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-landscape preview avoids flip",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-landscape preview avoids edit",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-landscape shutter separate from editor",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-landscape stage-local bounds hint",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-landscape stage-local bounds lenses",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-landscape stage-local bounds zoomLabel",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-landscape stage-local bounds zoomSlider",
+      "passed": true
+    },
+    {
+      "check": "SE-photo-landscape zoom touch targets",
+      "passed": true
+    },
+    {
+      "check": "SE-video-landscape preserves field aspect",
+      "passed": true
+    },
+    {
+      "check": "SE-video-landscape bounds stage",
+      "passed": true
+    },
+    {
+      "check": "SE-video-landscape bounds mode",
+      "passed": true
+    },
+    {
+      "check": "SE-video-landscape bounds shutter",
+      "passed": true
+    },
+    {
+      "check": "SE-video-landscape bounds files",
+      "passed": true
+    },
+    {
+      "check": "SE-video-landscape bounds flip",
+      "passed": true
+    },
+    {
+      "check": "SE-video-landscape bounds edit",
+      "passed": true
+    },
+    {
+      "check": "SE-video-landscape bounds watermark",
+      "passed": true
+    },
+    {
+      "check": "SE-video-landscape bounds live",
+      "passed": true
+    },
+    {
+      "check": "SE-video-landscape bounds settings",
+      "passed": true
+    },
+    {
+      "check": "SE-video-landscape preview avoids shutter",
+      "passed": true
+    },
+    {
+      "check": "SE-video-landscape preview avoids mode",
+      "passed": true
+    },
+    {
+      "check": "SE-video-landscape preview avoids files",
+      "passed": true
+    },
+    {
+      "check": "SE-video-landscape preview avoids flip",
+      "passed": true
+    },
+    {
+      "check": "SE-video-landscape preview avoids edit",
+      "passed": true
+    },
+    {
+      "check": "SE-video-landscape shutter separate from editor",
+      "passed": true
+    },
+    {
+      "check": "SE-video-landscape stage-local bounds hint",
+      "passed": true
+    },
+    {
+      "check": "SE-video-landscape stage-local bounds lenses",
+      "passed": true
+    },
+    {
+      "check": "SE-video-landscape stage-local bounds zoomLabel",
+      "passed": true
+    },
+    {
+      "check": "SE-video-landscape stage-local bounds zoomSlider",
+      "passed": true
+    },
+    {
+      "check": "SE-video-landscape zoom touch targets",
+      "passed": true
+    },
+    {
+      "check": "Native lens mapping (0.5, 2, 1, 16)",
+      "passed": true
+    },
+    {
+      "check": "Native lens mapping (1, 2, 1, 16)",
+      "passed": true
+    },
+    {
+      "check": "Native lens mapping (2, 2, 1, 16)",
+      "passed": true
+    },
+    {
+      "check": "Native lens mapping (0.1, 2, 1, 16)",
+      "passed": true
+    },
+    {
+      "check": "Native lens mapping (20, 2, 1, 30)",
+      "passed": true
+    },
+    {
+      "check": "Native lens mapping (0.5, 1, 1, 8)",
+      "passed": true
+    },
+    {
+      "check": "Native lens mapping (1, 1, 1, 8)",
+      "passed": true
+    },
+    {
+      "check": "Native lens mapping (2, 1, 1, 8)",
+      "passed": true
+    },
+    {
+      "check": "Native lens mapping (8, 2, 1, 10)",
+      "passed": true
+    },
+    {
+      "check": "Native lens mapping (0.5, 2, 2, 16)",
+      "passed": true
+    },
+    {
+      "check": "Old 30Hz to 20fps gate accepts only 150/300 model frames",
+      "passed": true
+    },
+    {
+      "check": "No old frame throttle",
+      "passed": true
+    },
+    {
+      "check": "No UIImage per camera frame",
+      "passed": true
+    },
+    {
+      "check": "GPU rendering does not read back pixels",
+      "passed": true
+    },
+    {
+      "check": "GPU submission bounded to two",
+      "passed": true
+    },
+    {
+      "check": "Preview output uses native YUV",
+      "passed": true
+    },
+    {
+      "check": "No main GPU completion wait",
+      "passed": true
+    },
+    {
+      "check": "Watermark renders off main",
+      "passed": true
+    },
+    {
+      "check": "Watermark cache enabled",
+      "passed": true
+    },
+    {
+      "check": "True ultrawide virtual discovery",
+      "passed": true
+    },
+    {
+      "check": "Optical mapping uses device switches",
+      "passed": true
+    },
+    {
+      "check": "Lens controls synchronized",
+      "passed": true
+    },
+    {
+      "check": "Live processor uses queued low-memory photo renderer",
+      "passed": true
+    }
+  ]
+}

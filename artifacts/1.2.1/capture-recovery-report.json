@@ -1,0 +1,22 @@
+{
+  "scope": "20 executed native C policy assertions + static Objective-C wiring checks; no iOS runtime testing",
+  "native_assertions": 20,
+  "static_checks": [
+    "Editor exit holds controls until the session has restarted",
+    "Editor exit releases worker ownership on main queue",
+    "Control updates derive capture ownership including the editor",
+    "Pressure/memory recovery refreshes controls before scheduler early exits",
+    "First shutter does not get swallowed by PhotoKit authorization",
+    "Worker requests add-only permission and resumes its persisted job",
+    "Every capture gate uses the same mode-aware admission",
+    "Queue calls the tested production policy",
+    "Recording journal is not runnable until the final callback",
+    "Completed recording is made runnable only after a successful journal write",
+    "Final photo callback waits behind serial disk writes before releasing shutter",
+    "Malformed recovery list entries are checked before keyed use",
+    "Malformed individual recovery records are rejected"
+  ],
+  "passed": 33,
+  "failed": 0,
+  "device_tested": false
+}
