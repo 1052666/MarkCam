@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Reproducible local arm64 iOS cross-build. No account credentials required."""
-import os, pathlib, plistlib, shutil, subprocess, sys, hashlib, json, struct, zipfile
+import os, pathlib, plistlib, shutil, subprocess, sys, hashlib, json, struct, zipfile, time
 ROOT=pathlib.Path(__file__).resolve().parents[1]
+VERSION='1.3.0'
+BUILD_NUMBER='7'
 SDK=pathlib.Path(os.environ.get('IOS_SDK','/tmp/iPhoneOS16.5.sdk'))
 BUILD=ROOT/'build'/'release'
 APP=BUILD/'Payload'/'MarkCam.app'
@@ -9,6 +11,9 @@ DIST=ROOT/'dist'
 if not SDK.is_dir(): sys.exit('Missing iOS SDK: '+str(SDK))
 for tool in ('clang','ld64.lld'):
     if not shutil.which(tool): sys.exit('Missing '+tool)
+commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
+epoch=int(os.environ.get('SOURCE_DATE_EPOCH') or subprocess.check_output(['git','show','-s','--format=%ct','HEAD'],cwd=ROOT,text=True).strip())
+archive_time=time.gmtime(max(epoch,315532800))[:6]
 resume='--resume' in sys.argv
 if BUILD.exists() and not resume: shutil.rmtree(BUILD)
 APP.mkdir(parents=True,exist_ok=True); DIST.mkdir(exist_ok=True)
@@ -18,7 +23,7 @@ for src in sorted((ROOT/'Sources').glob('*.m')):
     inputs=[src,pathlib.Path(__file__)]+list((ROOT/'Sources').glob('*.h'))
     if resume and obj.is_file() and obj.stat().st_size>0 and obj.stat().st_mtime>=max(p.stat().st_mtime for p in inputs):
         print('REUSE',src.name,flush=True);objects.append(str(obj));continue
-    cmd=['clang','--target=arm64-apple-ios16.5','-isysroot',str(SDK),'-fobjc-arc','-fblocks','-fobjc-exceptions','-fexceptions','-Werror=protocol','-O2','-gline-tables-only','-Wall','-Wextra','-Wno-unused-parameter','-Wno-deprecated-declarations','-I'+str(ROOT/'Sources'),'-c',str(src),'-o',str(obj)]
+    cmd=['clang','--target=arm64-apple-ios16.5','-isysroot',str(SDK),'-fobjc-arc','-fblocks','-fobjc-exceptions','-fexceptions','-Werror=protocol','-O2','-gline-tables-only','-ffile-prefix-map='+str(ROOT)+'=/src/MarkCam','-fdebug-compilation-dir=/src/MarkCam','-Wall','-Wextra','-Wno-unused-parameter','-Wno-deprecated-declarations','-I'+str(ROOT/'Sources'),'-c',str(src),'-o',str(obj)]
     print('COMPILE',src.name,flush=True);subprocess.run(cmd,check=True);objects.append(str(obj))
 frameworks=['Foundation','UIKit','AVFoundation','CoreMedia','CoreVideo','CoreImage','CoreGraphics','QuartzCore','Metal','Photos','PhotosUI','UniformTypeIdentifiers','ImageIO','MobileCoreServices']
 cmd=['ld64.lld','-arch','arm64','-platform_version','ios','16.5','16.5','-syslibroot',str(SDK),'-lSystem','-lobjc','-adhoc_codesign','-dead_strip']
@@ -30,7 +35,7 @@ icons=['AppIcon20x2','AppIcon20x3','AppIcon29x2','AppIcon29x3','AppIcon40x2','Ap
 info={
 'CFBundleDevelopmentRegion':'zh_CN','CFBundleLocalizations':['zh_CN','en'],
 'CFBundleExecutable':'MarkCam','CFBundleIdentifier':'app.markcam.camera','CFBundleName':'MarkCam','CFBundleDisplayName':'印记相机',
-'CFBundlePackageType':'APPL','CFBundleInfoDictionaryVersion':'6.0','CFBundleShortVersionString':'1.2.0','CFBundleVersion':'5',
+'CFBundlePackageType':'APPL','CFBundleInfoDictionaryVersion':'6.0','CFBundleShortVersionString':VERSION,'CFBundleVersion':BUILD_NUMBER,
 'MinimumOSVersion':'16.5','UIDeviceFamily':[1],'LSRequiresIPhoneOS':True,'UIRequiredDeviceCapabilities':['arm64'],
 'UILaunchScreen':{},'UIUserInterfaceStyle':'Dark','UIStatusBarStyle':'UIStatusBarStyleLightContent',
 'UISupportedInterfaceOrientations':['UIInterfaceOrientationPortrait','UIInterfaceOrientationLandscapeLeft','UIInterfaceOrientationLandscapeRight'],
@@ -44,14 +49,18 @@ with open(APP/'Info.plist','wb') as f: plistlib.dump(info,f)
 privacy={'NSPrivacyTracking':False,'NSPrivacyTrackingDomains':[],'NSPrivacyCollectedDataTypes':[],'NSPrivacyAccessedAPITypes':[{'NSPrivacyAccessedAPIType':'NSPrivacyAccessedAPICategoryFileTimestamp','NSPrivacyAccessedAPITypeReasons':['C617.1']}]}
 with open(APP/'PrivacyInfo.xcprivacy','wb') as f: plistlib.dump(privacy,f)
 os.chmod(APP/'MarkCam',0o755)
-ipa=DIST/'MarkCam-1.2.0-resign-required.ipa'
+ipa=DIST/('MarkCam-'+VERSION+'-resign-required.ipa')
 with zipfile.ZipFile(ipa,'w',zipfile.ZIP_DEFLATED,compresslevel=8) as z:
     for p in sorted((BUILD/'Payload').rglob('*')):
-        if p.is_file(): z.write(p,p.relative_to(BUILD))
+        if p.is_file():
+            entry=zipfile.ZipInfo(p.relative_to(BUILD).as_posix(),archive_time)
+            entry.create_system=3
+            entry.external_attr=(0o100755 if p.name=='MarkCam' else 0o100644)<<16
+            z.writestr(entry,p.read_bytes(),compress_type=zipfile.ZIP_DEFLATED,compresslevel=8)
 header=struct.unpack('<IIII',open(APP/'MarkCam','rb').read(16))
 assert header[0]==0xfeedfacf and header[1]==0x100000c and header[3]==2
 sha=hashlib.sha256(ipa.read_bytes()).hexdigest()
-report={'app':'印记相机','version':'1.2.0 (5)','min_ios':'16.5','target':'arm64','sdk':'theos iPhoneOS16.5','ipa':ipa.name,'bytes':ipa.stat().st_size,'sha256':sha,'signing':'Mach-O ad-hoc signature only. Requires legitimate re-signing/provisioning to install.','device_tested':False,'source_files':[str(x.relative_to(ROOT)) for x in (ROOT/'Sources').glob('*')]}
-(DIST/'build-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2))
-(DIST/'SHA256SUMS.txt').write_text(sha+'  '+ipa.name+'\n')
+report={'app':'印记相机','version':VERSION+' ('+BUILD_NUMBER+')','min_ios':'16.5','target':'arm64','sdk':'theos iPhoneOS16.5','ipa':ipa.name,'bytes':ipa.stat().st_size,'sha256':sha,'signing':'Mach-O ad-hoc signature only. Requires legitimate re-signing/provisioning to install.','device_tested':False,'source_commit':commit,'source_date_epoch':epoch,'source_dirty':bool(subprocess.check_output(['git','status','--porcelain','--untracked-files=normal'],cwd=ROOT,text=True).strip()),'toolchain':{tool:subprocess.check_output([tool,'--version'],text=True).splitlines()[0] for tool in ('clang','ld64.lld')},'source_files':[x.relative_to(ROOT).as_posix() for x in sorted((ROOT/'Sources').glob('*'))]}
+(DIST/'build-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+(DIST/'SHA256SUMS.txt').write_text(sha+'  '+ipa.name+'\n',encoding='utf-8')
 print(json.dumps(report,ensure_ascii=False,indent=2))

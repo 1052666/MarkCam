@@ -16,6 +16,10 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)didCapture;
 - (void)memoryPressure;
 - (BOOL)allowsCaptureLive:(BOOL)live;
+- (BOOL)allowsCaptureLive:(BOOL)live reservedCount:(NSUInteger)reserved;
+- (nullable NSString *)captureBlockReasonForLive:(BOOL)live reservedCount:(NSUInteger)reserved;
+/// Resume only jobs known to have stopped before saving because Photos denied access.
+- (void)resumeAfterPhotoAuthorization;
 - (void)retry:(NSURL *)meta;
 - (void)pause;
 - (BOOL)isActive:(NSURL *)meta;

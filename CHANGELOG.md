@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.3.0 (7) — native camera and editor craft
+- Apply Emil Kowalski's design guidance to native UIKit: immediate double-ring shutter feedback, neutral chrome, consistent selected states and 44pt camera touch targets.
+- Divide the editor into Layers, Tone, Templates and Settings; route camera settings directly to its tab while retaining every original editing capability.
+- Keep continuous edits responsive by updating the preview immediately and persisting on completion, cancellation, tool changes, navigation and interruption. Persist discrete VoiceOver slider changes immediately.
+- Support Dynamic Type in forms, compact preview layout at accessibility sizes, opaque high-contrast/reduced-transparency chrome and reduced-motion custom feedback.
+- Add actual UIKit Simulator interaction and screenshot regression on standard and compact iPhones, including landscape, large text, settings routing and persistence behavior. The scene and shutter receiver are explicit fixtures; hardware performance and image quality remain unmeasured.
+- Include the shutter recovery, isolated per-photo delegates and bounded continuous capture improvements from 1.2.1.
+
+## 1.2.1 (6) — capture recovery and responsive shooting test release
+- Refresh shutter admission even when rendering is paused or memory-constrained; release the editor's queue lock on return to the camera.
+- Retain a separate delegate and immutable settings per photo. Release the ordinary shutter after exposure; admit at most two in-flight photos within the six-job pending budget.
+- Move JPEG writes and completion bookkeeping off main; avoid repeating exposure locks and preview reconfiguration for each shutter press.
+- Add an enabled-by-default fast-capture setting, with a visible low-light quality tradeoff and an option to restore balanced quality. Keep configured photo dimensions and balanced Live capture.
+- Resume transient memory and confirmed photo-permission failures without retrying uncertain PhotoKit saves. Validate recovered settings before processing; preserve incomplete recordings for explicit recovery.
+- Add macOS callback runtime regression, host C admission/recovery tests, four individual negative selector compile controls, and a pinned Linux IPA build workflow. These checks do not certify iPhone camera performance or Live playback.
+
 ## 1.2.0 (5) — early test release
 - Persist capture resources and job metadata before releasing the shutter; move watermark/tone rendering and PhotoKit saving into a serial utility queue.
 - Bound pending work (ordinary photos: 6; Live capture requires fewer than 2 pending jobs). Defer worker startup after capture, and prevent new capture during heavy Live/video processing.
