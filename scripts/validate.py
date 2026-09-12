@@ -4,7 +4,7 @@ import pathlib, zipfile, plistlib, struct, hashlib, json, io, re
 from macho_inspect import MachO
 from PIL import Image
 ROOT=pathlib.Path(__file__).resolve().parents[1]
-ipa=ROOT/'dist/MarkCam-1.2.0-resign-required.ipa'
+ipa=ROOT/'dist/MarkCam-1.2.1-resign-required.ipa'
 checks=[]
 def check(name,condition):
     checks.append({'check':name,'passed':bool(condition)})
@@ -18,7 +18,7 @@ with zipfile.ZipFile(ipa) as z:
     for k in ['CFBundleIdentifier','CFBundleExecutable','CFBundlePackageType','CFBundleVersion','CFBundleShortVersionString','MinimumOSVersion','UIDeviceFamily','UILaunchScreen']:
         check('Info.plist '+k,k in info)
     check('Correct executable name',info['CFBundleExecutable']=='MarkCam')
-    check('Feature version 1.2.0 build 5',info['CFBundleShortVersionString']=='1.2.0' and info['CFBundleVersion']=='5')
+    check('Feature version 1.2.1 build 6',info['CFBundleShortVersionString']=='1.2.1' and info['CFBundleVersion']=='6')
     check('Bundle identifier unchanged',info['CFBundleIdentifier']=='app.markcam.camera')
     check('Correct minimum OS',info['MinimumOSVersion']=='16.5')
     check('iPhone device family',info['UIDeviceFamily']==[1])
@@ -77,7 +77,7 @@ with zipfile.ZipFile(ipa) as z:
     for selector in ['openSettings','zoomSliderChanged:','setZoomFactor:','applyExposureSettings','queueChanged','finishedCaptureJob:meta:error:','didReceiveMemoryWarning','writeMemoryDiagnostic:']:
         check('Compiled camera feature '+selector,selector in methods)
     processing_methods=parsed.methods('MCProcessingQueue')
-    for selector in ['allowsCaptureLive:','tick','retry:','pause','memoryPressure','commitPhotos:meta:']:
+    for selector in ['allowsCaptureLive:video:','tick','retry:','pause','memoryPressure','commitPhotos:meta:']:
         check('Compiled async queue '+selector,selector in processing_methods)
     check('Compiled low-memory photo renderer class', b'MCPhotoRenderer' in binary and b'renderSource:destination:settings:date:error:' in binary)
     preview_methods=parsed.methods('MCPreviewView')
@@ -94,7 +94,7 @@ for name,condition in [
 ('Controller no longer owns export sessions','exportSession' not in camera and 'liveProcessor' not in camera),
 ('Queue is finite','MC_MAX_PENDING 6' in policy and 'pending<(live?2:MC_MAX_PENDING)' in policy),
 ('Queue serializes processing','self.processing=YES' in queue and 'if(self.processing||self.captureBusy)' in queue),
-('Heavy processing blocks capture','self.heavyProcessing=live||video' in queue and 'return !self.heavyProcessing' in queue),
+('Heavy processing blocks capture','self.heavyProcessing=live||video' in queue and 'MCCanStartCapture' in queue and '!heavyProcessing' in policy),
 ('Photo renderer reads from file and writes file','imageWithContentsOfURL:source' in renderer and 'writeJPEGRepresentationOfImage:output toURL:partial' in renderer),
 ('Photo renderer avoids full UIImage output','processPhoto:' not in renderer and 'UIImagePNGRepresentation' not in renderer),
 ('Photo renderer checks available memory','os_proc_available_memory()' in renderer and '可用内存不足' in renderer),
@@ -125,20 +125,20 @@ for name,condition in [
 ('Exposure clamped to device capabilities','d.minExposureTargetBias' in camera and 'd.maxExposureTargetBias' in camera),
 ('Native live support tested','isLivePhotoCaptureSupported' in camera and 'p.livePhotoMovieFileURL=' in camera),
 ('Live photo waits for both resources','self.livePhotoWritten&&self.liveMovieWritten' in camera),
-('Live resource saved as pairedVideo',camera.count('PHAssetResourceTypePairedVideo')>=2),
+('Live resource saved as pairedVideo',queue.count('PHAssetResourceTypePairedVideo')>=2),
 ('Live originals preserved','@"sourceMovie"' in camera and '@"outputMovie"' in camera),
 ('Live input pairing ID checked','kCGImagePropertyMakerAppleDictionary' in live and 'AVMetadataIdentifierQuickTimeMetadataContentIdentifier' in live),
 ('Live still image time preserved','com.apple.quicktime.still-image-time' in live and 'sourceFormatHint:format' in live),
 ('Native timed metadata track passthrough','AVMediaTypeMetadata' in live and 'outputSettings:nil' in live and 'appendSampleBuffer:sample' in live),
-('Live still photo and movie both watermarked','processPhoto:image settings:settings' in live and 'overlayForSize:size settings:settings' in live),
+('Live still photo and movie both watermarked','MCPhotoRenderer renderSource:photo' in live and 'overlayForSize:size settings:settings' in live),
 ('Live pair checked by system before save','requestLivePhotoWithResourceFileURLs:' in live and 'PHLivePhotoInfoIsDegradedKey' in live),
-('Live work cancellable and bounded','120*NSEC_PER_SEC' in live and '[self.liveProcessor cancel]' in camera),
+('Live work cancellable and bounded','120*NSEC_PER_SEC' in live and '[self.live cancel]' in queue),
 ('No live networking',not any(k in live for k in ['NSURLSession','NSURLConnection','http://','https://'])),
 ('Photo callback required contract','@protocol MCPhotoCaptureContract' in camera and '@required' in camera),
 ('Exact photo selector preflight','respondsToSelector:@selector(captureOutput:didFinishProcessingPhoto:error:)' in camera),
 ('No wrong photo delegate selector','void)photoOutput:' not in camera),
 ('Photo request exception captured with diagnostic','@catch(NSException *exception)' in camera and 'LastCaptureError.json' in camera),
-('Photo output capabilities checked','availablePhotoCodecTypes containsObject:AVVideoCodecTypeJPEG' in camera and 'p.highResolutionPhotoEnabled=self.photoOutput.isHighResolutionCaptureEnabled' in camera),
+('Photo output capabilities checked','availablePhotoCodecTypes containsObject:AVVideoCodecTypeJPEG' in camera and 'p.maxPhotoDimensions=dimensions' in camera),
 ('Recording delegate implemented','captureOutput:(AVCaptureFileOutput *)output didFinishRecording' in camera),
 ('Start recording delegate implemented','captureOutput:(AVCaptureFileOutput *)output didStartRecording' in camera),
 ('No wrong recording delegate selector','void)fileOutput:' not in camera),
@@ -146,8 +146,8 @@ for name,condition in [
 ('No stale UI frame backlog','self.previewGeometryPending=YES' in camera and 'self.previewGeometryPending=NO' in camera),
 ('Fallback video preview explicitly labeled','录像兼容模式' in camera and 'nativeVideoPreview' in camera),
 ('Five minute recording ceiling','CMTimeMake(300,1)' in camera),
-('Retry cleans partial output','无法清理上次未完成' in camera),
-('Save adds original non-destructively','shouldMoveFile=NO' in camera and 'keepOriginal' in camera),
+('Retry cleans partial output','removeItemAtURL:url error:&e' in queue),
+('Save adds original non-destructively','shouldMoveFile=NO' in queue and 'keepOriginal' in queue),
 ('No misparented editor header','tableHeaderView=self.header' not in editor),
 ('Editor canvas stays above table','self.headerHeight.constant=height' in editor),
 ('Editor import bounds match engine','WMEMaxBackupBytes = 32' in editor),

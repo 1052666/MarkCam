@@ -8,6 +8,10 @@
 static inline int MCCanCapture(unsigned pending,int live,int pausedPressure,uint64_t available){
  return !pausedPressure && pending<(live?2:MC_MAX_PENDING) && (!available||available>=MC_CAPTURE_RESERVE);
 }
+static inline int MCCanStartCapture(unsigned pending,int livePreference,int video,int processing,int heavyProcessing,int pausedPressure,uint64_t available){
+ int live=livePreference&&!video;
+ return !heavyProcessing&&!((live||video)&&processing)&&MCCanCapture(pending,live,pausedPressure,available);
+}
 static inline int MCCanRender(int foreground,int captureBusy,int processing,int paused,int thermal,uint64_t available){
  return foreground&&!captureBusy&&!processing&&!paused&&thermal<2&&(!available||available>=MC_RENDER_RESERVE);
 }

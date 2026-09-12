@@ -15,7 +15,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)tick;
 - (void)didCapture;
 - (void)memoryPressure;
-- (BOOL)allowsCaptureLive:(BOOL)live;
+- (BOOL)allowsCaptureLive:(BOOL)live video:(BOOL)video;
 - (void)retry:(NSURL *)meta;
 - (void)pause;
 - (BOOL)isActive:(NSURL *)meta;

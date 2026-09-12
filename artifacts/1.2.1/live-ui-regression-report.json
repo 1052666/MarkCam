@@ -1,0 +1,87 @@
+{
+  "scope": "Host-side model/layout math and static contracts only; device Live Photo playback is pending",
+  "passed": 20,
+  "failed": 0,
+  "checks": [
+    {
+      "check": "Hardware exposure clamps -2",
+      "passed": true
+    },
+    {
+      "check": "Hardware exposure clamps -1",
+      "passed": true
+    },
+    {
+      "check": "Hardware exposure clamps 0",
+      "passed": true
+    },
+    {
+      "check": "Hardware exposure clamps 1",
+      "passed": true
+    },
+    {
+      "check": "Hardware exposure clamps 2",
+      "passed": true
+    },
+    {
+      "check": "Native Live callback required",
+      "passed": true
+    },
+    {
+      "check": "Output data retained before callbacks",
+      "passed": true
+    },
+    {
+      "check": "Final processing dispatches through serial render queue",
+      "passed": true
+    },
+    {
+      "check": "No metadata synthesized by guessed timestamp",
+      "passed": true
+    },
+    {
+      "check": "All native metadata samples copied",
+      "passed": true
+    },
+    {
+      "check": "Movie identity preserved",
+      "passed": true
+    },
+    {
+      "check": "Photo identity roundtrip checked",
+      "passed": true
+    },
+    {
+      "check": "Still-image marker demanded",
+      "passed": true
+    },
+    {
+      "check": "Pair validation precedes success",
+      "passed": true
+    },
+    {
+      "check": "PhotoKit saves single asset with two resources",
+      "passed": true
+    },
+    {
+      "check": "Original Live pair retained when requested",
+      "passed": true
+    },
+    {
+      "check": "Settings deep route exists",
+      "passed": true
+    },
+    {
+      "check": "EV reset persists",
+      "passed": true
+    },
+    {
+      "check": "Capture disables zoom and config",
+      "passed": true
+    },
+    {
+      "check": "Suspension choice survives session stop",
+      "passed": true
+    }
+  ]
+}

@@ -79,6 +79,7 @@ static NSString *MCID(void){return [NSString stringWithFormat:@"%013lld-%@",(lon
 @property(nonatomic,strong) NSURL *photoMeta;
 @property(nonatomic,strong) NSError *photoWriteError;
 @property(nonatomic) BOOL memoryPreviewFallback;
+@property(nonatomic) BOOL queueWasBlocked;
 @property(atomic) BOOL liveSupported;
 @property(atomic) BOOL capturingLive;
 @property(atomic,strong) NSURL *captureLiveMeta;
@@ -384,7 +385,21 @@ static NSString *MCID(void){return [NSString stringWithFormat:@"%013lld-%@",(lon
  [self.preview requestSnapshot:^(UIImage *image){CameraViewController *camera=weak;if(!camera)return;camera.busy=NO;if(camera.inBackground){[camera updateControls];return;}camera.editorShown=YES;[camera updatePreviewRoute];dispatch_async(camera.sessionQueue,^{[camera.session stopRunning];});
  WMEditorViewController *e=[WMEditorViewController new];e.opensSettings=settings;e.backgroundImage=image;e.onChange=^{[weak refreshSettings];};UINavigationController *nav=[[UINavigationController alloc]initWithRootViewController:e];nav.modalPresentationStyle=UIModalPresentationFullScreen;[camera presentViewController:nav animated:YES completion:nil];[camera updateControls];}];
 }
-- (void)viewDidAppear:(BOOL)animated {[super viewDidAppear:animated];if(self.editorShown&&!self.presentedViewController){self.editorShown=NO;self.gpuFailed=NO;[self refreshSettings];dispatch_async(self.sessionQueue,^{if(self.configured&&!self.inBackground){[self.session beginConfiguration];[self configureLiveMode];[self configurePhotoResolution];[self applyConnections];[self.session commitConfiguration];[self.session startRunning];}});}}
+- (void)viewDidAppear:(BOOL)animated {
+ [super viewDidAppear:animated];
+ if(self.editorShown&&!self.presentedViewController){
+  self.editorShown=NO;self.gpuFailed=NO;self.busy=YES;[self updateControls];[self refreshSettings];
+  dispatch_async(self.sessionQueue,^{
+   if(self.configured&&!self.inBackground){[self.session beginConfiguration];[self configureLiveMode];[self configurePhotoResolution];[self applyConnections];[self.session commitConfiguration];[self.session startRunning];}
+   // Ending editor ownership must release captureBusy as well as the UI.
+   dispatch_async(dispatch_get_main_queue(),^{self.busy=NO;[self updateControls];});
+  });
+ }
+}
+- (BOOL)canStartQueuedCapture {
+ // A remembered LIVE preference must not apply the two-job Live limit to video.
+ return [self.workQueue allowsCaptureLive:[self.activeSettings[@"livePhotoEnabled"]boolValue] video:self.wantsVideo];
+}
 - (void)updateControls {
  BOOL locked=self.busy||self.recording;self.workQueue.captureBusy=locked||self.editorShown;self.zoomSlider.enabled=!locked&&self.configured;self.lensSelector.enabled=!locked&&self.configured;self.settingsButton.enabled=!locked;[self refreshLiveUI];if(!locked)[self refreshZoomUI];self.mode.enabled=!locked;self.switchButton.enabled=!locked&&self.configured;self.editButton.enabled=!locked;self.filesButton.enabled=!locked;self.watermarkButton.enabled=!locked;self.shutter.enabled=self.configured&&(!self.busy||self.recording)&&!self.inBackground;
  self.shutter.backgroundColor=self.wantsVideo?UIColor.systemRedColor:UIColor.whiteColor;[self.shutter setTitle:self.recording?@"■":@"" forState:UIControlStateNormal];[self.shutter setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];self.shutter.accessibilityLabel=self.recording?@"停止录像":(self.wantsVideo?@"开始录像":@"拍照");UIApplication.sharedApplication.idleTimerDisabled=self.busy||self.recording;[self queueChanged];
@@ -401,8 +416,7 @@ static NSString *MCID(void){return [NSString stringWithFormat:@"%013lld-%@",(lon
 - (void)capturePressed {
  if(self.recording){[self status:@"正在结束录像…"];self.shutter.enabled=NO;dispatch_async(self.sessionQueue,^{[self.movieOutput stopRecording];});return;}if(self.busy||!self.configured)return;if(!self.session.running){[self alert:@"相机尚未就绪" message:@"请返回前台，或重新打开相机权限。"];return;}
  NSInteger delay=[self.activeSettings[@"timerSeconds"]integerValue];
- if(![self.workQueue allowsCaptureLive:[self.activeSettings[@"livePhotoEnabled"]boolValue]]||(self.wantsVideo&&self.workQueue.processing)){[self status:@"待处理队列已满或资源紧张，请稍候；已有照片安全保留"];return;}
- PHAuthorizationStatus photos=[PHPhotoLibrary authorizationStatusForAccessLevel:PHAccessLevelAddOnly];if(photos==PHAuthorizationStatusNotDetermined){[self authorizeQueue];return;}
+ if(![self canStartQueuedCapture]){[self status:@"待处理队列已满或资源紧张，请稍候；已有照片安全保留"];return;}
  if(!self.wantsVideo&&[self.activeSettings[@"livePhotoEnabled"]boolValue]&&[AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio]!=AVAuthorizationStatusAuthorized){[self authorizeLive:^{[self refreshSettings];[self status:@"麦克风已开启，取景稳定后再次按快门拍摄 LIVE"]; }];return;}
  if(delay>0){self.busy=YES;self.countdown=MIN(delay,10);NSInteger generation=++self.countdownGeneration;[self updateControls];[self countdownStep:generation];}else [self startCapture];
 }
@@ -410,11 +424,13 @@ static NSString *MCID(void){return [NSString stringWithFormat:@"%013lld-%@",(lon
  if(generation!=self.countdownGeneration||self.inBackground)return;if(self.countdown<=0){self.countdownLabel.text=@"";self.busy=NO;[self startCapture];return;}self.countdownLabel.text=[NSString stringWithFormat:@"%ld",(long)self.countdown--];dispatch_after(dispatch_time(DISPATCH_TIME_NOW,NSEC_PER_SEC),dispatch_get_main_queue(),^{[self countdownStep:generation];});
 }
 - (void)startCapture {
- if(![self.workQueue allowsCaptureLive:[self.activeSettings[@"livePhotoEnabled"]boolValue]]||(self.wantsVideo&&self.workQueue.processing)){self.busy=NO;[self updateControls];return;}
+ if(self.busy)return;
+ if(!self.configured||self.inBackground||self.applicationInactive||self.editorShown||!self.session.isRunning){[self updateControls];return;}
+ if(![self canStartQueuedCapture]){self.busy=NO;[self updateControls];return;}
  [self endCaptureLease];self.captureBackgroundTask=[UIApplication.sharedApplication beginBackgroundTaskWithName:@"Save capture to disk" expirationHandler:^{[self endCaptureLease];}];self.captureLeaseActive=self.captureBackgroundTask!=UIBackgroundTaskInvalid;
  dispatch_async(self.renderQueue,^{self.photoReady=NO;self.photoJob=nil;self.photoMeta=nil;self.photoWriteError=nil;});
  self.photoProcessed=NO;self.captureSettings=[[WMEngine shared]snapshot];self.captureDate=NSDate.date;self.captureOrientation=[self orientation];self.busy=YES;[self updateControls];
- if(self.wantsVideo){NSString *ident=MCID();self.currentRawURL=[[self pendingDirectory]URLByAppendingPathComponent:[ident stringByAppendingString:@"-raw.mov"]];self.activeMetaURL=[[self pendingDirectory]URLByAppendingPathComponent:[ident stringByAppendingString:@".job.json"]];NSMutableDictionary *j=[@{@"kind":@"video",@"stage":@"raw",@"source":self.currentRawURL.lastPathComponent,@"output":[ident stringByAppendingString:@".mp4"],@"settings":self.captureSettings,@"date":@([self.captureDate timeIntervalSince1970])}mutableCopy];if(![self writeJob:j URL:self.activeMetaURL]){self.busy=NO;[self endCaptureLease];[self updateControls];return;}self.recordDate=self.captureDate;[self status:@"正在启动录制…"];dispatch_async(self.sessionQueue,^{[self applyConnections];AVCaptureDevice *d=self.cameraInput.device;NSError *e=nil;if(d.hasTorch&&[d lockForConfiguration:&e]){d.torchMode=[self.captureSettings[@"flashMode"]integerValue]==2?AVCaptureTorchModeOn:AVCaptureTorchModeOff;[d unlockForConfiguration];}[self.movieOutput startRecordingToOutputFileURL:self.currentRawURL recordingDelegate:self];});
+ if(self.wantsVideo){NSString *ident=MCID();self.currentRawURL=[[self pendingDirectory]URLByAppendingPathComponent:[ident stringByAppendingString:@"-raw.mov"]];self.activeMetaURL=[[self pendingDirectory]URLByAppendingPathComponent:[ident stringByAppendingString:@".job.json"]];NSMutableDictionary *j=[@{@"kind":@"video",@"stage":@"capturing",@"source":self.currentRawURL.lastPathComponent,@"output":[ident stringByAppendingString:@".mp4"],@"settings":self.captureSettings,@"date":@([self.captureDate timeIntervalSince1970])}mutableCopy];if(![self writeJob:j URL:self.activeMetaURL]){self.busy=NO;[self endCaptureLease];[self updateControls];return;}self.recordDate=self.captureDate;[self status:@"正在启动录制…"];dispatch_async(self.sessionQueue,^{[self applyConnections];AVCaptureDevice *d=self.cameraInput.device;NSError *e=nil;if(d.hasTorch&&[d lockForConfiguration:&e]){d.torchMode=[self.captureSettings[@"flashMode"]integerValue]==2?AVCaptureTorchModeOn:AVCaptureTorchModeOff;[d unlockForConfiguration];}[self.movieOutput startRecordingToOutputFileURL:self.currentRawURL recordingDelegate:self];});
  }else{[self status:@"正在拍摄…"];dispatch_async(self.sessionQueue,^{[self submitPhotoRequest];});}
 }
 // Runs on sessionQueue. A rejected request must restore the UI, never silently
@@ -496,6 +512,8 @@ static NSString *MCID(void){return [NSString stringWithFormat:@"%013lld-%@",(lon
  dispatch_async(self.sessionQueue,^{AVCaptureDevice *d=self.cameraInput.device;NSError *e=nil;if(d.hasTorch&&[d lockForConfiguration:&e]){d.torchMode=AVCaptureTorchModeOff;[d unlockForConfiguration];}});
  dispatch_async(dispatch_get_main_queue(),^{self.recording=NO;self.recordLabel.text=@"";[self updateControls];NSData *d=[NSData dataWithContentsOfURL:self.activeMetaURL];NSMutableDictionary *job=d?[[NSJSONSerialization JSONObjectWithData:d options:NSJSONReadingMutableContainers error:nil]mutableCopy]:nil;
  BOOL success=!error||[error.userInfo[AVErrorRecordingSuccessfullyFinishedKey]boolValue];NSNumber *size=nil;[url getResourceValue:&size forKey:NSURLFileSizeKey error:nil];if(!success||size.longLongValue<1024||!job){self.busy=NO;[self endCaptureLease];[self updateControls];[self alert:@"录像未正常完成" message:[NSString stringWithFormat:@"%@\n已保留可用的临时文件，可在“待保存”中重试或导出。",error.localizedDescription?:@"数据不完整"]];return;}
+ job[@"stage"]=@"raw";
+ if(![self writeJob:job URL:self.activeMetaURL]){[self finishedCaptureJob:nil meta:nil error:[NSError errorWithDomain:@"MarkCam.Capture" code:4 userInfo:@{NSLocalizedDescriptionKey:@"录像恢复记录未更新，原片保留在待保存"}]];return;}
  [self finishedCaptureJob:job meta:self.activeMetaURL error:nil];});
 }
 - (void)authorizeQueue {
@@ -506,7 +524,14 @@ static NSString *MCID(void){return [NSString stringWithFormat:@"%013lld-%@",(lon
  [self.filesButton setTitle:count?[NSString stringWithFormat:@"待处理 %lu",(unsigned long)count]:@"待保存" forState:UIControlStateNormal];
  self.filesButton.accessibilityValue=self.workQueue.summary;self.progress.hidden=!self.workQueue.processing;self.progress.progress=self.workQueue.progress;self.cancelExportButton.hidden=!self.workQueue.processing;
  [self.cancelExportButton setTitle:@"暂停合成" forState:UIControlStateNormal];
- if(!self.busy&&!self.recording)self.shutter.enabled=self.configured&&!self.inBackground&&[self.workQueue allowsCaptureLive:[self.activeSettings[@"livePhotoEnabled"]boolValue]];
+ if(!self.busy&&!self.recording){
+  BOOL available=[self canStartQueuedCapture];
+  self.shutter.enabled=self.configured&&!self.inBackground&&!self.applicationInactive&&!self.editorShown&&available;
+  self.shutter.accessibilityValue=available?nil:@"待处理队列已满或资源紧张，请在待保存查看";
+  if(!available&&self.configured&&!self.inBackground&&!self.editorShown){if(!self.queueWasBlocked)self.statusGeneration++;self.statusLabel.text=@"暂缓拍摄：请在待保存查看队列，或等待内存/温度恢复";self.statusLabel.alpha=1;}
+  else if(available&&self.queueWasBlocked)[self status:@"相机已就绪，可以继续拍摄"];
+  self.queueWasBlocked=!available;
+ }
  [self updatePreviewRoute];
 }
 - (void)processJob:(NSMutableDictionary *)job meta:(NSURL *)meta {
@@ -525,7 +550,7 @@ static NSString *MCID(void){return [NSString stringWithFormat:@"%013lld-%@",(lon
  // This runs only after the final native capture callback AND serial disk writes.
  self.busy=NO;self.capturingLive=NO;self.photoProcessed=YES;self.recordLabel.text=@"";self.captureSettings=nil;self.captureLiveJob=nil;self.captureLiveMeta=nil;self.photoJob=nil;self.photoMeta=nil;[self endCaptureLease];
  if(job&&meta){[self.workQueue didCapture];[self status:@"原片已暂存 ✓ 可继续拍，稍后自动合成"];}
- else if(error)[self alert:@"拍摄未完整完成" message:error.localizedDescription];
+ else {[self.workQueue refresh];if(error)[self alert:@"拍摄未完整完成" message:error.localizedDescription];}
  [self updateControls];
 }
 - (void)didReceiveMemoryWarning {
@@ -541,7 +566,7 @@ static NSString *MCID(void){return [NSString stringWithFormat:@"%013lld-%@",(lon
 - (void)showFiles {
  [self writeMemoryDiagnostic:@"queue-panel"];
  NSArray<NSURL *> *files=[NSFileManager.defaultManager contentsOfDirectoryAtURL:[self pendingDirectory] includingPropertiesForKeys:@[NSURLContentModificationDateKey] options:0 error:nil];NSMutableArray<NSURL *> *jobs=[NSMutableArray new];for(NSURL *u in files)if([u.lastPathComponent hasSuffix:@".job.json"])[jobs addObject:u];[jobs sortUsingComparator:^NSComparisonResult(NSURL *a,NSURL *b){NSDate *da=nil,*db=nil;[a getResourceValue:&da forKey:NSURLContentModificationDateKey error:nil];[b getResourceValue:&db forKey:NSURLContentModificationDateKey error:nil];return [db compare:da];}];
- UIAlertController *a=[UIAlertController alertControllerWithTitle:@"待保存作品" message:[NSString stringWithFormat:@"%@\n待处理 %lu。切到其他 App 后可能暂停，回到此 App 继续。",self.workQueue.summary,(unsigned long)self.workQueue.pendingCount] preferredStyle:UIAlertControllerStyleActionSheet];NSUInteger count=0;for(NSURL *u in jobs){if(count++>=15)break;NSDictionary *j=[NSJSONSerialization JSONObjectWithData:[NSData dataWithContentsOfURL:u]?:NSData.data options:0 error:nil];NSString *t=[NSString stringWithFormat:@"%@ · %@",[j[@"kind"]isEqual:@"video"]?@"视频":([j[@"kind"]isEqual:@"live"]?@"实况":@"照片"),[NSDateFormatter localizedStringFromDate:[NSDate dateWithTimeIntervalSince1970:[j[@"date"]doubleValue]] dateStyle:NSDateFormatterShortStyle timeStyle:NSDateFormatterShortStyle]];[a addAction:[UIAlertAction actionWithTitle:t style:UIAlertActionStyleDefault handler:^(UIAlertAction *act){[self showJob:u];}]];}
+ UIAlertController *a=[UIAlertController alertControllerWithTitle:@"待保存作品" message:[NSString stringWithFormat:@"%@\n待处理 %lu。切到其他 App 后可能暂停，回到此 App 继续。",self.workQueue.summary,(unsigned long)self.workQueue.pendingCount] preferredStyle:UIAlertControllerStyleActionSheet];NSUInteger count=0;for(NSURL *u in jobs){if(count++>=15)break;NSDictionary *j=[NSJSONSerialization JSONObjectWithData:[NSData dataWithContentsOfURL:u]?:NSData.data options:0 error:nil];if(![j isKindOfClass:NSDictionary.class]||![j[@"date"]isKindOfClass:NSNumber.class]||!isfinite([j[@"date"]doubleValue]))continue;NSString *t=[NSString stringWithFormat:@"%@ · %@",[j[@"kind"]isEqual:@"video"]?@"视频":([j[@"kind"]isEqual:@"live"]?@"实况":@"照片"),[NSDateFormatter localizedStringFromDate:[NSDate dateWithTimeIntervalSince1970:[j[@"date"]doubleValue]] dateStyle:NSDateFormatterShortStyle timeStyle:NSDateFormatterShortStyle]];[a addAction:[UIAlertAction actionWithTitle:t style:UIAlertActionStyleDefault handler:^(UIAlertAction *act){[self showJob:u];}]];}
  if(self.workQueue.processing)[a addAction:[UIAlertAction actionWithTitle:@"暂停后台合成" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action){[self cancelExport];}]];
  else [a addAction:[UIAlertAction actionWithTitle:@"继续自动合成" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action){self.workQueue.manuallyPaused=NO;[self.workQueue refresh];[self status:@"已恢复队列；失败作品需单独点重试"]; }]];
  [a addAction:[UIAlertAction actionWithTitle:@"相册授权并继续" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action){[self authorizeQueue];}]];
@@ -555,15 +580,15 @@ static NSString *MCID(void){return [NSString stringWithFormat:@"%013lld-%@",(lon
  UIActivityViewController *share=[[UIActivityViewController alloc]initWithActivityItems:items applicationActivities:nil];[self anchor:share button:self.filesButton];[self presentViewController:share animated:YES completion:nil];
 }
 - (void)showJob:(NSURL *)meta {
- NSData *d=[NSData dataWithContentsOfURL:meta];NSMutableDictionary *job=d?[NSJSONSerialization JSONObjectWithData:d options:NSJSONReadingMutableContainers error:nil]:nil;if(!job){[self alert:@"无法读取记录" message:@"可通过文件 App 的“我的 iPhone → 印记相机 → Pending”查找原始文件。"];return;}
+ NSData *d=[NSData dataWithContentsOfURL:meta];NSMutableDictionary *job=d?[NSJSONSerialization JSONObjectWithData:d options:NSJSONReadingMutableContainers error:nil]:nil;if(![job isKindOfClass:NSMutableDictionary.class]){[self alert:@"无法读取记录" message:@"可通过文件 App 的“我的 iPhone → 印记相机 → Pending”查找原始文件。"];return;}
  NSURL *output=[self fileForJob:job key:@"output"],*source=[self fileForJob:job key:@"source"];BOOL hasShare=([NSFileManager.defaultManager fileExistsAtPath:output.path]||[NSFileManager.defaultManager fileExistsAtPath:source.path]);if([job[@"kind"]isEqual:@"live"])hasShare=hasShare||[NSFileManager.defaultManager fileExistsAtPath:[self fileForJob:job key:@"sourceMovie"].path];
  UIAlertController *a=[UIAlertController alertControllerWithTitle:@"作品恢复" message:[NSString stringWithFormat:@"%@\n%@",job[@"processingError"]?:@"按拍摄时的水印和时间处理",[job[@"stage"]isEqual:@"saving"]?@"上次保存结果不确定，请先检查系统相册":@"分享不会删除暂存。处理中的作品须先暂停再操作。"] preferredStyle:UIAlertControllerStyleActionSheet];[a addAction:[UIAlertAction actionWithTitle:@"重试合成 / 保存相册" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x){[self processJob:job meta:meta];}]];if(hasShare)[a addAction:[UIAlertAction actionWithTitle:[job[@"kind"]isEqual:@"live"]?@"导出实况资源文件（照片 + MOV）":@"分享已有成品或原片" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x){[self shareJob:job];}]];[a addAction:[UIAlertAction actionWithTitle:@"删除此暂存作品…" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *x){UIAlertController *q=[UIAlertController alertControllerWithTitle:@"永久删除暂存？" message:@"如果尚未保存或分享，作品将无法恢复。" preferredStyle:UIAlertControllerStyleAlert];[q addAction:[UIAlertAction actionWithTitle:@"保留" style:UIAlertActionStyleCancel handler:nil]];[q addAction:[UIAlertAction actionWithTitle:@"删除" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *v){[self cleanupJob:job meta:meta];[self status:@"已删除此暂存作品"]; }]];[self presentViewController:q animated:YES completion:nil];}]];[a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];[self anchor:a button:self.filesButton];[self presentViewController:a animated:YES completion:nil];
 }
 - (void)tick {
  if(self.recording){NSInteger sec=(NSInteger)(-[self.recordDate timeIntervalSinceNow]);self.recordLabel.text=[NSString stringWithFormat:@"● %02ld:%02ld",(long)(sec/60),(long)(sec%60)];}else if(!self.busy&&!self.editorShown&&!self.inBackground)[self updateOverlay];[self.workQueue tick];
 }
-- (void)willResignActive:(NSNotification *)notification {self.applicationInactive=YES;[self updatePreviewRoute];}
-- (void)didBecomeActive:(NSNotification *)notification {self.applicationInactive=NO;[self updatePreviewRoute];}
+- (void)willResignActive:(NSNotification *)notification {self.applicationInactive=YES;[self queueChanged];}
+- (void)didBecomeActive:(NSNotification *)notification {self.applicationInactive=NO;[self queueChanged];}
 - (void)background:(NSNotification *)n {
  self.inBackground=YES;[self updatePreviewRoute];self.countdownGeneration++;if(self.countdownLabel.text.length){self.countdownLabel.text=@"";self.busy=NO;}self.workQueue.foreground=NO;dispatch_async(self.sessionQueue,^{if(self.movieOutput.isRecording)[self.movieOutput stopRecording];[self.session stopRunning];});[self updateControls];UIApplication.sharedApplication.idleTimerDisabled=NO;
 }

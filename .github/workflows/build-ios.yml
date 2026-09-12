@@ -1,0 +1,48 @@
+name: Build and verify iOS IPA
+
+on:
+  push:
+    paths-ignore:
+      - 'artifacts/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install cross-build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-18 lld-18 python3-pil
+          echo '/usr/lib/llvm-18/bin' >> "$GITHUB_PATH"
+      - name: Prepare pinned iOS SDK
+        env:
+          SDK_COMMIT: 0222fd5413cf4b9af096f37b4621afa2688572f7
+        run: |
+          git clone --filter=blob:none --no-checkout https://github.com/theos/sdks.git "$RUNNER_TEMP/ios-sdks"
+          git -C "$RUNNER_TEMP/ios-sdks" sparse-checkout set iPhoneOS16.5.sdk
+          git -C "$RUNNER_TEMP/ios-sdks" checkout "$SDK_COMMIT"
+          echo "IOS_SDK=$RUNNER_TEMP/ios-sdks/iPhoneOS16.5.sdk" >> "$GITHUB_ENV"
+      - name: Build IPA
+        run: python3 scripts/build.py
+      - name: Verify capture, Live Photo, layout, and binary contracts
+        run: |
+          python3 tests/test_capture_recovery.py
+          python3 tests/test_photo_contract.py
+          python3 tests/test_live_ui.py
+          python3 tests/test_preview.py
+          python3 scripts/validate.py
+      - name: Package source and checksums
+        run: python3 scripts/publish-local.py
+      - name: Upload IPA and verification reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: MarkCam-1.2.1-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 90

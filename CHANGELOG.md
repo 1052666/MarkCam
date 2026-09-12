@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.1 (6)
+- Capture and persist the first photo before requesting PhotoKit add-only authorization.
+- Release worker capture ownership after returning from the watermark editor and restarting the session.
+- Refresh shutter admission during pressure/thermal/memory recovery even when the worker cannot dispatch a job; show backpressure in the camera UI.
+- Share mode-aware admission between shutter UI, capture entry and countdown completion; ignore the saved LIVE preference while recording video.
+- Keep video journals in `capturing` until recording has finished and the `raw` journal is written.
+- Reject malformed recovery JSON before keyed access; refresh the list after an incomplete capture.
+- Migrate stale queue/renderer assertions, add capture recovery checks, and build verified IPA artifacts in CI.
+- No iOS device or simulator validation claimed.
+
 ## 1.2.0 (5) — early test release
 - Persist capture resources and job metadata before releasing the shutter; move watermark/tone rendering and PhotoKit saving into a serial utility queue.
 - Bound pending work (ordinary photos: 6; Live capture requires fewer than 2 pending jobs). Defer worker startup after capture, and prevent new capture during heavy Live/video processing.

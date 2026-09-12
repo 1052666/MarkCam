@@ -1,0 +1,8 @@
+{
+  "scope": "Compile-only positive/negative regression; not device testing",
+  "fixed_source_compiles": true,
+  "old_typo_rejected_by_compiler": true,
+  "missing_processing_callback_reported": true,
+  "missing_completion_callback_reported": true,
+  "missing_live_callback_reported": true
+}

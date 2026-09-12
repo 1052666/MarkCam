@@ -1,0 +1,877 @@
+{
+  "scope": "IPA structure + static source assertions; NOT iOS runtime or image correctness tests",
+  "passed": 217,
+  "failed": 0,
+  "sha256": "4c139f7fceb5f5dfed7b85630cdd6fe8be36a15f28ea71d63284c5fd6c614062",
+  "checks": [
+    {
+      "check": "ZIP integrity",
+      "passed": true
+    },
+    {
+      "check": "Payload root only",
+      "passed": true
+    },
+    {
+      "check": "No path traversal",
+      "passed": true
+    },
+    {
+      "check": "No source/credential files in app",
+      "passed": true
+    },
+    {
+      "check": "Info.plist CFBundleIdentifier",
+      "passed": true
+    },
+    {
+      "check": "Info.plist CFBundleExecutable",
+      "passed": true
+    },
+    {
+      "check": "Info.plist CFBundlePackageType",
+      "passed": true
+    },
+    {
+      "check": "Info.plist CFBundleVersion",
+      "passed": true
+    },
+    {
+      "check": "Info.plist CFBundleShortVersionString",
+      "passed": true
+    },
+    {
+      "check": "Info.plist MinimumOSVersion",
+      "passed": true
+    },
+    {
+      "check": "Info.plist UIDeviceFamily",
+      "passed": true
+    },
+    {
+      "check": "Info.plist UILaunchScreen",
+      "passed": true
+    },
+    {
+      "check": "Correct executable name",
+      "passed": true
+    },
+    {
+      "check": "Feature version 1.2.1 build 6",
+      "passed": true
+    },
+    {
+      "check": "Bundle identifier unchanged",
+      "passed": true
+    },
+    {
+      "check": "Correct minimum OS",
+      "passed": true
+    },
+    {
+      "check": "iPhone device family",
+      "passed": true
+    },
+    {
+      "check": "Permission NSCameraUsageDescription",
+      "passed": true
+    },
+    {
+      "check": "Permission NSMicrophoneUsageDescription",
+      "passed": true
+    },
+    {
+      "check": "Permission NSPhotoLibraryAddUsageDescription",
+      "passed": true
+    },
+    {
+      "check": "No read-all photo permission",
+      "passed": true
+    },
+    {
+      "check": "No location permission",
+      "passed": true
+    },
+    {
+      "check": "No arbitrary network exception",
+      "passed": true
+    },
+    {
+      "check": "File-sharing recovery enabled",
+      "passed": true
+    },
+    {
+      "check": "AppIcon1024 valid opaque PNG",
+      "passed": true
+    },
+    {
+      "check": "AppIcon20x2 valid opaque PNG",
+      "passed": true
+    },
+    {
+      "check": "AppIcon20x3 valid opaque PNG",
+      "passed": true
+    },
+    {
+      "check": "AppIcon29x2 valid opaque PNG",
+      "passed": true
+    },
+    {
+      "check": "AppIcon29x3 valid opaque PNG",
+      "passed": true
+    },
+    {
+      "check": "AppIcon40x2 valid opaque PNG",
+      "passed": true
+    },
+    {
+      "check": "AppIcon40x3 valid opaque PNG",
+      "passed": true
+    },
+    {
+      "check": "AppIcon60x2 valid opaque PNG",
+      "passed": true
+    },
+    {
+      "check": "AppIcon60x3 valid opaque PNG",
+      "passed": true
+    },
+    {
+      "check": "Registered icon AppIcon20x2",
+      "passed": true
+    },
+    {
+      "check": "Registered icon AppIcon20x3",
+      "passed": true
+    },
+    {
+      "check": "Registered icon AppIcon29x2",
+      "passed": true
+    },
+    {
+      "check": "Registered icon AppIcon29x3",
+      "passed": true
+    },
+    {
+      "check": "Registered icon AppIcon40x2",
+      "passed": true
+    },
+    {
+      "check": "Registered icon AppIcon40x3",
+      "passed": true
+    },
+    {
+      "check": "Registered icon AppIcon60x2",
+      "passed": true
+    },
+    {
+      "check": "Registered icon AppIcon60x3",
+      "passed": true
+    },
+    {
+      "check": "stamp-leaf.png transparent RGBA",
+      "passed": true
+    },
+    {
+      "check": "stamp-aperture.png transparent RGBA",
+      "passed": true
+    },
+    {
+      "check": "Privacy manifest no tracking",
+      "passed": true
+    },
+    {
+      "check": "Mach-O 64-bit arm64 executable",
+      "passed": true
+    },
+    {
+      "check": "Executable permission preserved",
+      "passed": true
+    },
+    {
+      "check": "PIE enabled",
+      "passed": true
+    },
+    {
+      "check": "Load command bounds 32",
+      "passed": true
+    },
+    {
+      "check": "Load command bounds 104",
+      "passed": true
+    },
+    {
+      "check": "Load command bounds 976",
+      "passed": true
+    },
+    {
+      "check": "Load command bounds 1528",
+      "passed": true
+    },
+    {
+      "check": "Load command bounds 2240",
+      "passed": true
+    },
+    {
+      "check": "Load command bounds 2312",
+      "passed": true
+    },
+    {
+      "check": "Load command bounds 2328",
+      "passed": true
+    },
+    {
+      "check": "Load command bounds 2344",
+      "passed": true
+    },
+    {
+      "check": "Load command bounds 2368",
+      "passed": true
+    },
+    {
+      "check": "Load command bounds 2448",
+      "passed": true
+    },
+    {
+      "check": "Load command bounds 2472",
+      "passed": true
+    },
+    {
+      "check": "Load command bounds 2504",
+      "passed": true
+    },
+    {
+      "check": "Load command bounds 2528",
+      "passed": true
+    },
+    {
+      "check": "LC_BUILD_VERSION iOS16.5",
+      "passed": true
+    },
+    {
+      "check": "Load command bounds 2560",
+      "passed": true
+    },
+    {
+      "check": "Load command bounds 2584",
+      "passed": true
+    },
+    {
+      "check": "Load command bounds 2640",
+      "passed": true
+    },
+    {
+      "check": "Load command bounds 2696",
+      "passed": true
+    },
+    {
+      "check": "Load command bounds 2784",
+      "passed": true
+    },
+    {
+      "check": "Load command bounds 2880",
+      "passed": true
+    },
+    {
+      "check": "Load command bounds 2960",
+      "passed": true
+    },
+    {
+      "check": "Load command bounds 3048",
+      "passed": true
+    },
+    {
+      "check": "Load command bounds 3136",
+      "passed": true
+    },
+    {
+      "check": "Load command bounds 3224",
+      "passed": true
+    },
+    {
+      "check": "Load command bounds 3312",
+      "passed": true
+    },
+    {
+      "check": "Load command bounds 3400",
+      "passed": true
+    },
+    {
+      "check": "Load command bounds 3488",
+      "passed": true
+    },
+    {
+      "check": "Load command bounds 3568",
+      "passed": true
+    },
+    {
+      "check": "Load command bounds 3648",
+      "passed": true
+    },
+    {
+      "check": "Load command bounds 3728",
+      "passed": true
+    },
+    {
+      "check": "Load command bounds 3840",
+      "passed": true
+    },
+    {
+      "check": "Load command bounds 3920",
+      "passed": true
+    },
+    {
+      "check": "Load command bounds 4024",
+      "passed": true
+    },
+    {
+      "check": "Load command bounds 4040",
+      "passed": true
+    },
+    {
+      "check": "Load command bounds 4056",
+      "passed": true
+    },
+    {
+      "check": "Load command table size",
+      "passed": true
+    },
+    {
+      "check": "Has entry point",
+      "passed": true
+    },
+    {
+      "check": "Has system dyld",
+      "passed": true
+    },
+    {
+      "check": "Has ad-hoc signature blob",
+      "passed": true
+    },
+    {
+      "check": "Framework UIKit",
+      "passed": true
+    },
+    {
+      "check": "Framework AVFoundation",
+      "passed": true
+    },
+    {
+      "check": "Framework CoreImage",
+      "passed": true
+    },
+    {
+      "check": "Framework Metal",
+      "passed": true
+    },
+    {
+      "check": "Framework Photos",
+      "passed": true
+    },
+    {
+      "check": "Framework PhotosUI",
+      "passed": true
+    },
+    {
+      "check": "Framework UniformTypeIdentifiers",
+      "passed": true
+    },
+    {
+      "check": "Framework ImageIO",
+      "passed": true
+    },
+    {
+      "check": "System library only /usr/lib/libSystem.B.dylib",
+      "passed": true
+    },
+    {
+      "check": "System library only /usr/lib/libobjc.A.dylib",
+      "passed": true
+    },
+    {
+      "check": "System library only /System/Library/Frameworks/Foundation.framework/Foundation",
+      "passed": true
+    },
+    {
+      "check": "System library only /System/Library/Frameworks/CoreFoundation.framework/CoreFoundation",
+      "passed": true
+    },
+    {
+      "check": "System library only /System/Library/Frameworks/UIKit.framework/UIKit",
+      "passed": true
+    },
+    {
+      "check": "System library only /System/Library/Frameworks/AVFoundation.framework/AVFoundation",
+      "passed": true
+    },
+    {
+      "check": "System library only /System/Library/Frameworks/CoreMedia.framework/CoreMedia",
+      "passed": true
+    },
+    {
+      "check": "System library only /System/Library/Frameworks/CoreVideo.framework/CoreVideo",
+      "passed": true
+    },
+    {
+      "check": "System library only /System/Library/Frameworks/CoreImage.framework/CoreImage",
+      "passed": true
+    },
+    {
+      "check": "System library only /System/Library/Frameworks/CoreGraphics.framework/CoreGraphics",
+      "passed": true
+    },
+    {
+      "check": "System library only /System/Library/Frameworks/QuartzCore.framework/QuartzCore",
+      "passed": true
+    },
+    {
+      "check": "System library only /System/Library/Frameworks/Metal.framework/Metal",
+      "passed": true
+    },
+    {
+      "check": "System library only /System/Library/Frameworks/Photos.framework/Photos",
+      "passed": true
+    },
+    {
+      "check": "System library only /System/Library/Frameworks/PhotosUI.framework/PhotosUI",
+      "passed": true
+    },
+    {
+      "check": "System library only /System/Library/Frameworks/UniformTypeIdentifiers.framework/UniformTypeIdentifiers",
+      "passed": true
+    },
+    {
+      "check": "System library only /System/Library/Frameworks/ImageIO.framework/ImageIO",
+      "passed": true
+    },
+    {
+      "check": "System library only /System/Library/Frameworks/MobileCoreServices.framework/MobileCoreServices",
+      "passed": true
+    },
+    {
+      "check": "Compiled camera implements captureOutput:didFinishProcessingPhoto:error:",
+      "passed": true
+    },
+    {
+      "check": "Method implementation in executable text captureOutput:didFinishProcessingPhoto:error:",
+      "passed": true
+    },
+    {
+      "check": "Compiled camera implements captureOutput:didFinishCaptureForResolvedSettings:error:",
+      "passed": true
+    },
+    {
+      "check": "Method implementation in executable text captureOutput:didFinishCaptureForResolvedSettings:error:",
+      "passed": true
+    },
+    {
+      "check": "Compiled camera implements captureOutput:didFinishProcessingLivePhotoToMovieFileAtURL:duration:photoDisplayTime:resolvedSettings:error:",
+      "passed": true
+    },
+    {
+      "check": "Method implementation in executable text captureOutput:didFinishProcessingLivePhotoToMovieFileAtURL:duration:photoDisplayTime:resolvedSettings:error:",
+      "passed": true
+    },
+    {
+      "check": "Compiled camera implements captureOutput:didStartRecordingToOutputFileAtURL:fromConnections:",
+      "passed": true
+    },
+    {
+      "check": "Method implementation in executable text captureOutput:didStartRecordingToOutputFileAtURL:fromConnections:",
+      "passed": true
+    },
+    {
+      "check": "Compiled camera implements captureOutput:didFinishRecordingToOutputFileAtURL:fromConnections:error:",
+      "passed": true
+    },
+    {
+      "check": "Method implementation in executable text captureOutput:didFinishRecordingToOutputFileAtURL:fromConnections:error:",
+      "passed": true
+    },
+    {
+      "check": "No misspelled photo callback in class metadata",
+      "passed": true
+    },
+    {
+      "check": "Local rejected-request diagnostic implemented",
+      "passed": true
+    },
+    {
+      "check": "Compiled live processor processPhoto:movie:outputPhoto:outputMovie:settings:date:completion:",
+      "passed": true
+    },
+    {
+      "check": "Compiled live processor prepareMovie:video:settings:date:",
+      "passed": true
+    },
+    {
+      "check": "Compiled live processor validatePair",
+      "passed": true
+    },
+    {
+      "check": "Compiled live processor cancel",
+      "passed": true
+    },
+    {
+      "check": "Compiled camera feature openSettings",
+      "passed": true
+    },
+    {
+      "check": "Compiled camera feature zoomSliderChanged:",
+      "passed": true
+    },
+    {
+      "check": "Compiled camera feature setZoomFactor:",
+      "passed": true
+    },
+    {
+      "check": "Compiled camera feature applyExposureSettings",
+      "passed": true
+    },
+    {
+      "check": "Compiled camera feature queueChanged",
+      "passed": true
+    },
+    {
+      "check": "Compiled camera feature finishedCaptureJob:meta:error:",
+      "passed": true
+    },
+    {
+      "check": "Compiled camera feature didReceiveMemoryWarning",
+      "passed": true
+    },
+    {
+      "check": "Compiled camera feature writeMemoryDiagnostic:",
+      "passed": true
+    },
+    {
+      "check": "Compiled async queue allowsCaptureLive:video:",
+      "passed": true
+    },
+    {
+      "check": "Compiled async queue tick",
+      "passed": true
+    },
+    {
+      "check": "Compiled async queue retry:",
+      "passed": true
+    },
+    {
+      "check": "Compiled async queue pause",
+      "passed": true
+    },
+    {
+      "check": "Compiled async queue memoryPressure",
+      "passed": true
+    },
+    {
+      "check": "Compiled async queue commitPhotos:meta:",
+      "passed": true
+    },
+    {
+      "check": "Compiled low-memory photo renderer class",
+      "passed": true
+    },
+    {
+      "check": "Compiled GPU preview submitPixelBuffer:",
+      "passed": true
+    },
+    {
+      "check": "Compiled GPU preview requestSnapshot:",
+      "passed": true
+    },
+    {
+      "check": "Compiled GPU preview reset",
+      "passed": true
+    },
+    {
+      "check": "Compiled GPU preview statistics",
+      "passed": true
+    },
+    {
+      "check": "Compiled lens/performance method lensChanged:",
+      "passed": true
+    },
+    {
+      "check": "Compiled lens/performance method wideReferenceForDevice:",
+      "passed": true
+    },
+    {
+      "check": "Compiled lens/performance method drainZoom",
+      "passed": true
+    },
+    {
+      "check": "Compiled lens/performance method updatePreviewRoute",
+      "passed": true
+    },
+    {
+      "check": "Compiled lens/performance method invalidateOverlay",
+      "passed": true
+    },
+    {
+      "check": "Async capture releases before render",
+      "passed": true
+    },
+    {
+      "check": "Controller no longer owns export sessions",
+      "passed": true
+    },
+    {
+      "check": "Queue is finite",
+      "passed": true
+    },
+    {
+      "check": "Queue serializes processing",
+      "passed": true
+    },
+    {
+      "check": "Heavy processing blocks capture",
+      "passed": true
+    },
+    {
+      "check": "Photo renderer reads from file and writes file",
+      "passed": true
+    },
+    {
+      "check": "Photo renderer avoids full UIImage output",
+      "passed": true
+    },
+    {
+      "check": "Photo renderer checks available memory",
+      "passed": true
+    },
+    {
+      "check": "Overlay canvas capped for memory",
+      "passed": true
+    },
+    {
+      "check": "Photo partial output is atomic",
+      "passed": true
+    },
+    {
+      "check": "Memory pressure pauses queue",
+      "passed": true
+    },
+    {
+      "check": "Memory diagnostic local only",
+      "passed": true
+    },
+    {
+      "check": "Short background leases only",
+      "passed": true
+    },
+    {
+      "check": "Saving stage avoids silent duplicate retry",
+      "passed": true
+    },
+    {
+      "check": "Ultra-wide virtual device discovery",
+      "passed": true
+    },
+    {
+      "check": "True lens switch factor mapping",
+      "passed": true
+    },
+    {
+      "check": "Frame throttle removed",
+      "passed": true
+    },
+    {
+      "check": "Bounded GPU work",
+      "passed": true
+    },
+    {
+      "check": "GPU destination output",
+      "passed": true
+    },
+    {
+      "check": "System preview available for neutral tone",
+      "passed": true
+    },
+    {
+      "check": "Watermark cache off main",
+      "passed": true
+    },
+    {
+      "check": "Only capture settings change hardware configuration",
+      "passed": true
+    },
+    {
+      "check": "Snapshot on demand",
+      "passed": true
+    },
+    {
+      "check": "Native shared geometry",
+      "passed": true
+    },
+    {
+      "check": "GPU stops before background",
+      "passed": true
+    },
+    {
+      "check": "EV moved off main preview",
+      "passed": true
+    },
+    {
+      "check": "Zoom slider actual camera control",
+      "passed": true
+    },
+    {
+      "check": "Pinch and slider share zoom update",
+      "passed": true
+    },
+    {
+      "check": "Preview gestures ignore controls",
+      "passed": true
+    },
+    {
+      "check": "EV persistent default",
+      "passed": true
+    },
+    {
+      "check": "Live persistent default off",
+      "passed": true
+    },
+    {
+      "check": "EV settings route not tone",
+      "passed": true
+    },
+    {
+      "check": "Exposure clamped to device capabilities",
+      "passed": true
+    },
+    {
+      "check": "Native live support tested",
+      "passed": true
+    },
+    {
+      "check": "Live photo waits for both resources",
+      "passed": true
+    },
+    {
+      "check": "Live resource saved as pairedVideo",
+      "passed": true
+    },
+    {
+      "check": "Live originals preserved",
+      "passed": true
+    },
+    {
+      "check": "Live input pairing ID checked",
+      "passed": true
+    },
+    {
+      "check": "Live still image time preserved",
+      "passed": true
+    },
+    {
+      "check": "Native timed metadata track passthrough",
+      "passed": true
+    },
+    {
+      "check": "Live still photo and movie both watermarked",
+      "passed": true
+    },
+    {
+      "check": "Live pair checked by system before save",
+      "passed": true
+    },
+    {
+      "check": "Live work cancellable and bounded",
+      "passed": true
+    },
+    {
+      "check": "No live networking",
+      "passed": true
+    },
+    {
+      "check": "Photo callback required contract",
+      "passed": true
+    },
+    {
+      "check": "Exact photo selector preflight",
+      "passed": true
+    },
+    {
+      "check": "No wrong photo delegate selector",
+      "passed": true
+    },
+    {
+      "check": "Photo request exception captured with diagnostic",
+      "passed": true
+    },
+    {
+      "check": "Photo output capabilities checked",
+      "passed": true
+    },
+    {
+      "check": "Recording delegate implemented",
+      "passed": true
+    },
+    {
+      "check": "Start recording delegate implemented",
+      "passed": true
+    },
+    {
+      "check": "No wrong recording delegate selector",
+      "passed": true
+    },
+    {
+      "check": "Native high quality photo capture",
+      "passed": true
+    },
+    {
+      "check": "No stale UI frame backlog",
+      "passed": true
+    },
+    {
+      "check": "Fallback video preview explicitly labeled",
+      "passed": true
+    },
+    {
+      "check": "Five minute recording ceiling",
+      "passed": true
+    },
+    {
+      "check": "Retry cleans partial output",
+      "passed": true
+    },
+    {
+      "check": "Save adds original non-destructively",
+      "passed": true
+    },
+    {
+      "check": "No misparented editor header",
+      "passed": true
+    },
+    {
+      "check": "Editor canvas stays above table",
+      "passed": true
+    },
+    {
+      "check": "Editor import bounds match engine",
+      "passed": true
+    },
+    {
+      "check": "Transparent assets embedded in backup",
+      "passed": true
+    },
+    {
+      "check": "Atomic settings writes",
+      "passed": true
+    },
+    {
+      "check": "Video preserves full asset and audio",
+      "passed": true
+    },
+    {
+      "check": "No unmarked original fallback on photo render failure",
+      "passed": true
+    },
+    {
+      "check": "No app networking code",
+      "passed": true
+    }
+  ],
+  "device_tested": false
+}

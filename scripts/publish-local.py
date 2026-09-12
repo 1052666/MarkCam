@@ -10,7 +10,7 @@ assert hashlib.sha256(ipa.read_bytes()).hexdigest()==report['sha256']
 source=DIST/('MarkCam-'+version+'-source.zip')
 tracked=subprocess.check_output(['git','ls-files','-z'],cwd=ROOT).decode().split('\0')
 with zipfile.ZipFile(source,'w',zipfile.ZIP_DEFLATED,compresslevel=8) as z:
-    for name in sorted(n for n in tracked if n):
+    for name in sorted(n for n in tracked if n and not n.startswith('artifacts/')):
         p=ROOT/name
         assert p.is_file() and not p.is_symlink(),name
         assert p.suffix.lower() not in ('.log','.ips','.pem','.p12','.pfx','.key','.mobileprovision','.ipa','.zip'),name

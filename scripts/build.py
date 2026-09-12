@@ -30,7 +30,7 @@ icons=['AppIcon20x2','AppIcon20x3','AppIcon29x2','AppIcon29x3','AppIcon40x2','Ap
 info={
 'CFBundleDevelopmentRegion':'zh_CN','CFBundleLocalizations':['zh_CN','en'],
 'CFBundleExecutable':'MarkCam','CFBundleIdentifier':'app.markcam.camera','CFBundleName':'MarkCam','CFBundleDisplayName':'印记相机',
-'CFBundlePackageType':'APPL','CFBundleInfoDictionaryVersion':'6.0','CFBundleShortVersionString':'1.2.0','CFBundleVersion':'5',
+'CFBundlePackageType':'APPL','CFBundleInfoDictionaryVersion':'6.0','CFBundleShortVersionString':'1.2.1','CFBundleVersion':'6',
 'MinimumOSVersion':'16.5','UIDeviceFamily':[1],'LSRequiresIPhoneOS':True,'UIRequiredDeviceCapabilities':['arm64'],
 'UILaunchScreen':{},'UIUserInterfaceStyle':'Dark','UIStatusBarStyle':'UIStatusBarStyleLightContent',
 'UISupportedInterfaceOrientations':['UIInterfaceOrientationPortrait','UIInterfaceOrientationLandscapeLeft','UIInterfaceOrientationLandscapeRight'],
@@ -44,14 +44,19 @@ with open(APP/'Info.plist','wb') as f: plistlib.dump(info,f)
 privacy={'NSPrivacyTracking':False,'NSPrivacyTrackingDomains':[],'NSPrivacyCollectedDataTypes':[],'NSPrivacyAccessedAPITypes':[{'NSPrivacyAccessedAPIType':'NSPrivacyAccessedAPICategoryFileTimestamp','NSPrivacyAccessedAPITypeReasons':['C617.1']}]}
 with open(APP/'PrivacyInfo.xcprivacy','wb') as f: plistlib.dump(privacy,f)
 os.chmod(APP/'MarkCam',0o755)
-ipa=DIST/'MarkCam-1.2.0-resign-required.ipa'
+ipa=DIST/'MarkCam-1.2.1-resign-required.ipa'
 with zipfile.ZipFile(ipa,'w',zipfile.ZIP_DEFLATED,compresslevel=8) as z:
     for p in sorted((BUILD/'Payload').rglob('*')):
         if p.is_file(): z.write(p,p.relative_to(BUILD))
 header=struct.unpack('<IIII',open(APP/'MarkCam','rb').read(16))
 assert header[0]==0xfeedfacf and header[1]==0x100000c and header[3]==2
 sha=hashlib.sha256(ipa.read_bytes()).hexdigest()
-report={'app':'印记相机','version':'1.2.0 (5)','min_ios':'16.5','target':'arm64','sdk':'theos iPhoneOS16.5','ipa':ipa.name,'bytes':ipa.stat().st_size,'sha256':sha,'signing':'Mach-O ad-hoc signature only. Requires legitimate re-signing/provisioning to install.','device_tested':False,'source_files':[str(x.relative_to(ROOT)) for x in (ROOT/'Sources').glob('*')]}
+source_commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
+source_inputs=sorted(p for folder in ('Sources','Resources') for p in (ROOT/folder).rglob('*') if p.is_file())
+source_digest=hashlib.sha256()
+for p in source_inputs:
+    source_digest.update(str(p.relative_to(ROOT)).encode()+b'\0'+p.read_bytes()+b'\0')
+report={'source_commit':source_commit,'source_inputs_sha256':source_digest.hexdigest(),'compiler':subprocess.check_output(['clang','--version'],text=True).splitlines()[0],'app':'印记相机','version':'1.2.1 (6)','min_ios':'16.5','target':'arm64','sdk':'theos iPhoneOS16.5','ipa':ipa.name,'bytes':ipa.stat().st_size,'sha256':sha,'signing':'Mach-O ad-hoc signature only. Requires legitimate re-signing/provisioning to install.','device_tested':False,'source_files':[str(x.relative_to(ROOT)) for x in (ROOT/'Sources').glob('*')]}
 (DIST/'build-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2))
 (DIST/'SHA256SUMS.txt').write_text(sha+'  '+ipa.name+'\n')
 print(json.dumps(report,ensure_ascii=False,indent=2))
