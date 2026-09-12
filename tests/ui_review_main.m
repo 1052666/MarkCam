@@ -270,18 +270,26 @@ static UIImage *Fixture(void) {
             if(completion)completion();[self nextAfter:.7];return;
         }
         switch(self.step++) {
-            case 0: [self checkCamera:@"Portrait photo"];
+            case 0: { [self checkCamera:@"Portrait photo"];
                 [self snapshot:@"01-camera-photo" after:^{[(UISegmentedControl *)[self.camera valueForKey:@"mode"] setSelectedSegmentIndex:1];[[self.camera valueForKey:@"mode"] sendActionsForControlEvents:UIControlEventValueChanged];}];break;
-            case 1: [self checkCamera:@"Portrait video"];
+            }
+            case 1: { [self checkCamera:@"Portrait video"];
                 [self snapshot:@"02-camera-video" after:^{[self.host setNeedsUpdateOfSupportedInterfaceOrientations];[self.window.windowScene requestGeometryUpdateWithPreferences:[[UIWindowSceneGeometryPreferencesIOS alloc] initWithInterfaceOrientations:UIInterfaceOrientationMaskLandscapeRight] errorHandler:^(NSError *error){Check(@"Landscape rotation accepted",NO);}];}];break;
-            case 2: [self.camera modeChanged];[self.window layoutIfNeeded];break;
-            case 3: Check(@"Simulator rotated to landscape",self.window.bounds.size.width>self.window.bounds.size.height);[self checkCamera:@"Landscape video"];
+            }
+            case 2: { [self.camera modeChanged];[self.window layoutIfNeeded];break;
+            }
+            case 3: { Check(@"Simulator rotated to landscape",self.window.bounds.size.width>self.window.bounds.size.height);[self checkCamera:@"Landscape video"];
                 [self snapshot:@"03-camera-landscape" after:^{[self.window.windowScene requestGeometryUpdateWithPreferences:[[UIWindowSceneGeometryPreferencesIOS alloc] initWithInterfaceOrientations:UIInterfaceOrientationMaskPortrait] errorHandler:^(NSError *error){Check(@"Portrait rotation accepted",NO);}];}];break;
-            case 4: self.editor=[WMEditorViewController new];self.editor.backgroundImage=Fixture();[self.host show:[[UINavigationController alloc] initWithRootViewController:self.editor]];break;
-            case 5: [self checkEditorTab:0];[self snapshot:@"04-editor-layers" after:^{[self selectTab:1];}];break;
-            case 6: [self checkEditorTab:1];[self testContinuousEdits];[self snapshot:@"05-editor-tone" after:^{[self selectTab:2];}];break;
-            case 7: [self checkEditorTab:2];[self snapshot:@"06-editor-templates" after:^{[self selectTab:3];}];break;
-            case 8: [self checkEditorTab:3];
+            }
+            case 4: { self.editor=[WMEditorViewController new];self.editor.backgroundImage=Fixture();[self.host show:[[UINavigationController alloc] initWithRootViewController:self.editor]];break;
+            }
+            case 5: { [self checkEditorTab:0];[self snapshot:@"04-editor-layers" after:^{[self selectTab:1];}];break;
+            }
+            case 6: { [self checkEditorTab:1];[self testContinuousEdits];[self snapshot:@"05-editor-tone" after:^{[self selectTab:2];}];break;
+            }
+            case 7: { [self checkEditorTab:2];[self snapshot:@"06-editor-templates" after:^{[self selectTab:3];}];break;
+            }
+            case 8: { [self checkEditorTab:3];
                 [self snapshot:@"07-editor-settings" after:^{
                     self.window.overrideUserInterfaceStyle=UIUserInterfaceStyleDark;
                     [self snapshot:@"08-editor-settings-dark" after:^{
@@ -290,27 +298,38 @@ static UIImage *Fixture(void) {
                         [self.host setOverrideTraitCollection:[UITraitCollection traitCollectionWithPreferredContentSizeCategory:UIContentSizeCategoryAccessibilityExtraExtraExtraLarge] forChildViewController:self.host.content];
                     }];
                 }];break;
-            case 9: [self checkEditorTab:3];
+            }
+            case 9: { [self checkEditorTab:3];
                 [self snapshot:@"08-editor-accessibility-text" after:^{[self.host show:self.camera];[self.camera modeChanged];[[self.camera valueForKey:@"settingsButton"] sendActionsForControlEvents:UIControlEventTouchUpInside];Check(@"Settings presents without waiting for a frame",[self.camera.presentedViewController isKindOfClass:UINavigationController.class]);}];break;
-            case 10: {
+            }
+            case 10: { {
                 UINavigationController *navigation=(UINavigationController *)self.camera.presentedViewController;
                 self.editor=(WMEditorViewController *)navigation.topViewController;
                 Check(@"Settings opens its own tab directly",[(UISegmentedControl *)[self.editor valueForKey:@"sectionPicker"] selectedSegmentIndex]==3);[self checkEditorTab:3];
                 [self snapshot:@"09-editor-direct-settings" after:^{[self.camera dismissViewControllerAnimated:NO completion:nil];}];break;
             }
-            case 11: Check(@"Returning from actual settings restores capture",[(UIButton *)[self.camera valueForKey:@"shutter"] isEnabled]);
+            }
+            case 11: { Check(@"Returning from actual settings restores capture",[(UIButton *)[self.camera valueForKey:@"shutter"] isEnabled]);
                 [self.host setOverrideTraitCollection:[UITraitCollection traitCollectionWithAccessibilityContrast:UIAccessibilityContrastHigh] forChildViewController:self.camera];[self.camera modeChanged];break;
-            case 12: {
+            }
+            case 12: { {
                 UIButton *tool=[self.camera valueForKey:@"settingsButton"];
                 Check(@"High contrast retains a native accessible control",tool.accessibilityLabel.length>0&&tool.bounds.size.width>=44);
                 [self snapshot:@"10-camera-high-contrast" after:^{[self beginRecoveryChecks];}];break;
             }
-            case 13: [self checkRecovery:NO];break;
-            case 14: [self checkRecovery:YES];[self beginLifecycleChecks];break;
-            case 15: [self checkActivatedLifecycle];break;
-            case 16: [self checkInactiveLifecycle];break;
-            case 17: [self checkReactivatedLifecycle];[self finish];return;
-            default: [self finish];return;
+            }
+            case 13: { [self checkRecovery:NO];break;
+            }
+            case 14: { [self checkRecovery:YES];[self beginLifecycleChecks];break;
+            }
+            case 15: { [self checkActivatedLifecycle];break;
+            }
+            case 16: { [self checkInactiveLifecycle];break;
+            }
+            case 17: { [self checkReactivatedLifecycle];[self finish];return;
+            }
+            default: { [self finish];return;
+            }
         }
         [self nextAfter:.7];
     } @catch(NSException *exception) {
