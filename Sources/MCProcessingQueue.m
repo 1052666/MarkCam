@@ -6,6 +6,7 @@
 #import <Photos/Photos.h>
 #import <UIKit/UIKit.h>
 #import <os/proc.h>
+#include <limits.h>
 
 static NSError *QError(NSString *s){return [NSError errorWithDomain:@"MarkCam.Queue" code:1 userInfo:@{NSLocalizedDescriptionKey:s}];}
 @interface MCProcessingQueue ()
@@ -17,6 +18,7 @@ static NSError *QError(NSString *s){return [NSError errorWithDomain:@"MarkCam.Qu
 @property(nonatomic,strong) dispatch_queue_t io;
 @property(nonatomic,strong) NSArray<NSURL *> *jobs;
 @property(nonatomic) BOOL scanning;
+@property(nonatomic) BOOL authorizationResumeRequested;
 @property(nonatomic) NSUInteger scanRevision;
 @property(nonatomic) CFTimeInterval lastShot,pressureUntil;
 @property(nonatomic,strong) MCLivePhotoProcessor *live;
@@ -54,12 +56,28 @@ static NSError *QError(NSString *s){return [NSError errorWithDomain:@"MarkCam.Qu
 - (void)notify {if(self.onChange)self.onChange();}
 - (float)progress {return self.live?self.live.progress:self.video?self.video.progress:self.processing?.1:0;}
 - (BOOL)isActive:(NSURL *)meta {return self.processing&&[self.activeMeta.path isEqual:meta.path];}
-- (void)setForeground:(BOOL)value {_foreground=value;if(!value){self.stopRequested=YES;[self.live cancel];[self.video cancelExport];}else{[self refresh];}[self notify];}
+- (void)setForeground:(BOOL)value {_foreground=value;if(!value){self.stopRequested=YES;[self.live cancel];[self.video cancelExport];}else{[self resumeAfterPhotoAuthorization];[self refresh];}[self notify];}
 - (void)setCaptureBusy:(BOOL)value {BOOL changed=_captureBusy!=value;_captureBusy=value;if(changed&&!value)self.lastShot=CACurrentMediaTime();}
 - (void)didCapture {self.pendingCount++;self.scanRevision++;self.lastShot=CACurrentMediaTime();[self refresh];[self notify];}
 - (BOOL)allowsCaptureLive:(BOOL)live {
+ return [self allowsCaptureLive:live reservedCount:0];
+}
+- (BOOL)allowsCaptureLive:(BOOL)live reservedCount:(NSUInteger)reserved {
+ return [self captureBlockReasonForLive:live reservedCount:reserved]==nil;
+}
+- (NSString *)captureBlockReasonForLive:(BOOL)live reservedCount:(NSUInteger)reserved {
  BOOL pressure=CACurrentMediaTime()<self.pressureUntil||NSProcessInfo.processInfo.thermalState>=NSProcessInfoThermalStateSerious;
- return !self.heavyProcessing&&!(live&&self.processing)&&MCCanCapture((unsigned)self.pendingCount,live,pressure,os_proc_available_memory());
+ MCCaptureAdmissionResult result=MCCaptureAdmission((unsigned)MIN(self.pendingCount,(NSUInteger)UINT_MAX),(unsigned)MIN(reserved,(NSUInteger)UINT_MAX),live,pressure,self.heavyProcessing,self.processing,os_proc_available_memory());
+ switch(result){
+  case MCAdmissionAllowed:return nil;
+  case MCAdmissionHeavyProcessing:return @"正在合成实况或视频，完成后可继续拍摄";
+  case MCAdmissionLiveProcessing:return @"正在处理照片，完成后可拍摄实况";
+  case MCAdmissionPressure:return @"设备温度或内存压力较高，恢复后自动开放快门";
+  case MCAdmissionInFlight:return @"正在接收照片，稍后可继续拍摄";
+  case MCAdmissionPending:return @"待处理作品已满，请等待保存或前往待保存处理";
+  case MCAdmissionMemory:return @"可用内存暂时不足，恢复后自动开放快门";
+ }
+ return @"相机正在准备";
 }
 - (void)pause {self.manuallyPaused=YES;self.stopRequested=YES;[self.live cancel];[self.video cancelExport];self.summary=@"合成已暂停，素材保留";[self notify];}
 - (void)memoryPressure {self.pressureUntil=CACurrentMediaTime()+15;self.stopRequested=YES;[self.live cancel];[self.video cancelExport];self.summary=@"内存压力：暂停合成，稍后继续";[self notify];}
@@ -74,7 +92,29 @@ static NSError *QError(NSString *s){return [NSError errorWithDomain:@"MarkCam.Qu
 }
 - (void)retry:(NSURL *)meta {
  if(self.processing||self.captureBusy){self.summary=@"拍摄或处理尚未结束，请稍后重试";[self notify];return;}self.manuallyPaused=NO;[self.blocked removeObject:meta.path];
- dispatch_async(self.io,^{NSMutableDictionary *job=[self readJob:meta];[job removeObjectForKey:@"processingError"];[job removeObjectForKey:@"queueBlocked"];if([job[@"stage"]isEqual:@"capturing"]||[job[@"stage"]isEqual:@"incomplete"])job[@"stage"]=@"raw";if([job[@"stage"]isEqual:@"saving"]){job[@"stage"]=@"ready";}if(job)[self.class writeJob:job URL:meta];dispatch_async(dispatch_get_main_queue(),^{[self refresh];});});
+ dispatch_async(self.io,^{NSMutableDictionary *job=[self readJob:meta];[job removeObjectForKey:@"processingError"];[job removeObjectForKey:@"queueBlocked"];[job removeObjectForKey:@"queueBlockReason"];if([job[@"stage"]isEqual:@"capturing"]||[job[@"stage"]isEqual:@"incomplete"])job[@"stage"]=@"raw";if([job[@"stage"]isEqual:@"saving"]){job[@"stage"]=@"ready";}if(job)[self.class writeJob:job URL:meta];dispatch_async(dispatch_get_main_queue(),^{[self refresh];});});
+}
+- (void)resumeAfterPhotoAuthorization {
+ PHAuthorizationStatus status=[PHPhotoLibrary authorizationStatusForAccessLevel:PHAccessLevelAddOnly];
+ if(status!=PHAuthorizationStatusAuthorized&&status!=PHAuthorizationStatusLimited)return;
+ self.authorizationResumeRequested=YES;
+ if(self.processing||self.scanning)return;
+ self.authorizationResumeRequested=NO;self.scanning=YES;
+ dispatch_async(self.io,^{@autoreleasepool{
+  NSMutableArray<NSString *> *resumed=[NSMutableArray new];
+  NSArray<NSURL *> *files=[NSFileManager.defaultManager contentsOfDirectoryAtURL:self.class.directory includingPropertiesForKeys:nil options:0 error:nil];
+  for(NSURL *meta in files){
+   if(![meta.lastPathComponent hasSuffix:@".job.json"])continue;
+   NSMutableDictionary *job=[self readJob:meta];
+   // The legacy text identifies a pre-save permission denial from 1.2.0. Never
+   // automatically reset "saving": its Photos transaction may have succeeded.
+   BOOL permission=[job[@"queueBlockReason"]isEqual:@"photo-permission"]||[job[@"processingError"]isEqual:@"需要相册权限：请点待保存 → 授权并继续"];
+   if(!MCShouldResumePermissionJob([job[@"stage"]isEqual:@"ready"],job[@"queueBlocked"]!=nil,permission))continue;
+   [job removeObjectForKey:@"queueBlocked"];[job removeObjectForKey:@"queueBlockReason"];[job removeObjectForKey:@"processingError"];
+   if([self.class writeJob:job URL:meta])[resumed addObject:meta.path];
+  }
+  dispatch_async(dispatch_get_main_queue(),^{self.scanning=NO;[self.blocked minusSet:[NSSet setWithArray:resumed]];self.scanRevision++;[self refresh];});
+ }});
 }
 - (NSMutableDictionary *)readJob:(NSURL *)meta {
  if(![meta.URLByResolvingSymlinksInPath.path hasPrefix:[self.class.directory.URLByResolvingSymlinksInPath.path stringByAppendingString:@"/"]])return nil;
@@ -82,7 +122,12 @@ static NSError *QError(NSString *s){return [NSError errorWithDomain:@"MarkCam.Qu
  NSData *data=[NSData dataWithContentsOfURL:meta];id job=data?[NSJSONSerialization JSONObjectWithData:data options:NSJSONReadingMutableContainers error:nil]:nil;return [job isKindOfClass:NSMutableDictionary.class]?job:nil;
 }
 - (void)tick {
- if(self.processing){[self notify];return;}if(self.scanning)return;
+ // Capture and rendering have different memory thresholds. Always refresh the
+ // shutter even when rendering cannot start (including after pressure expires).
+ [self notify];
+ if(self.processing)return;
+ if(self.authorizationResumeRequested)[self resumeAfterPhotoAuthorization];
+ if(self.scanning)return;
  BOOL pause=self.manuallyPaused||CACurrentMediaTime()<self.pressureUntil;
  if(!MCCanRender(self.foreground,self.captureBusy,self.processing,pause,(int)NSProcessInfo.processInfo.thermalState,os_proc_available_memory()))return;
  if(CACurrentMediaTime()-self.lastShot<1.2)return; // Prefer shutter bursts before starting the worker.
@@ -91,7 +136,7 @@ static NSError *QError(NSString *s){return [NSError errorWithDomain:@"MarkCam.Qu
  self.processing=YES;[self beginLease];self.activeMeta=next;self.stopRequested=NO;self.summary=@"异步合成中，可继续拍普通照片";[self notify];
  dispatch_async(self.io,^{@autoreleasepool{
   NSMutableDictionary *job=[self readJob:next];NSString *kind=job[@"kind"],*stage=job[@"stage"];
-  BOOL valid=[@[@"photo",@"live",@"video"]containsObject:kind]&&[job[@"settings"]isKindOfClass:NSDictionary.class]&&[job[@"date"]isKindOfClass:NSNumber.class]&&isfinite([job[@"date"]doubleValue]);
+  BOOL valid=[@[@"photo",@"live",@"video"]containsObject:kind]&&[WMEngine isValidSettingsSnapshot:job[@"settings"]]&&[job[@"date"]isKindOfClass:NSNumber.class]&&isfinite([job[@"date"]doubleValue]);
   if(!valid||job[@"queueBlocked"]||![@[@"raw",@"ready",@"saved"]containsObject:stage]){dispatch_async(dispatch_get_main_queue(),^{[self.blocked addObject:next.path];[self finish:QError(@"恢复信息不完整或已暂停，请在待保存查看") job:job meta:next block:YES];});return;}
   if([stage isEqual:@"saved"]){[self.class cleanupJob:job meta:next];dispatch_async(dispatch_get_main_queue(),^{[self finish:nil job:nil meta:next block:NO];});return;}
   dispatch_async(dispatch_get_main_queue(),^{[self beginJob:job meta:next];});
@@ -134,6 +179,10 @@ static NSError *QError(NSString *s){return [NSError errorWithDomain:@"MarkCam.Qu
 - (void)failed:(NSError *)error job:(NSMutableDictionary *)job meta:(NSURL *)meta {
  BOOL interrupted=self.stopRequested||!self.foreground;
  if(interrupted){[self finish:error job:job meta:meta block:NO];return;}
+ if([error.domain isEqual:MCPhotoRendererErrorDomain]&&error.code==MCPhotoRendererErrorInsufficientMemory){
+  // A momentary shortage must not permanently poison a recoverable raw job.
+  self.pressureUntil=CACurrentMediaTime()+15;[self finish:error job:job meta:meta block:NO];return;
+ }
  job[@"queueBlocked"]=@YES;job[@"processingError"]=error.localizedDescription?:@"处理失败";
  dispatch_async(self.io,^{[self.class writeJob:job URL:meta];dispatch_async(dispatch_get_main_queue(),^{[self finish:error job:job meta:meta block:YES];});});
 }
@@ -144,7 +193,7 @@ static NSError *QError(NSString *s){return [NSError errorWithDomain:@"MarkCam.Qu
 - (void)save:(NSMutableDictionary *)job meta:(NSURL *)meta {
  if(!self.foreground||self.stopRequested){[self finish:QError(@"成片已暂存，返回后继续保存") job:job meta:meta block:NO];return;}
  PHAuthorizationStatus st=[PHPhotoLibrary authorizationStatusForAccessLevel:PHAccessLevelAddOnly];
- if(st!=PHAuthorizationStatusAuthorized&&st!=PHAuthorizationStatusLimited){[self failed:QError(@"需要相册权限：请点待保存 → 授权并继续") job:job meta:meta];return;}
+ if(st!=PHAuthorizationStatusAuthorized&&st!=PHAuthorizationStatusLimited){job[@"queueBlockReason"]=@"photo-permission";[self failed:QError(@"需要相册权限：请点待保存 → 授权并继续") job:job meta:meta];return;}
  self.summary=@"异步保存到相册";[self notify];
  job[@"stage"]=@"saving";dispatch_async(self.io,^{BOOL written=[self.class writeJob:job URL:meta];dispatch_async(dispatch_get_main_queue(),^{if(!written){[self failed:QError(@"保存前日志写入失败") job:job meta:meta];return;}[self commitPhotos:job meta:meta];});});
 }

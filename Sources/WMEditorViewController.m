@@ -293,6 +293,7 @@ static NSString *WMEHex(UIColor *color) {
     [self slider:@"EV 曝光补偿" key:@"exposureBias" min:-2 max:2],
     [self action:@"曝光恢复为 0 EV" key:@"resetExposure"],
     [self toggle:@"Live Photo 实况照片" key:@"livePhotoEnabled"],
+    [self toggle:@"连拍优先（弱光细节可能减少）" key:@"fastCapture"],
     [self toggle:@"流畅优先（取景不调色）" key:@"smoothPreview"],
     [self toggle:@"自动添加水印" key:@"watermarkEnabled"], [self toggle:@"保留原片" key:@"keepOriginal"],
     [self toggle:@"相机九宫格" key:@"gridEnabled"], [self toggle:@"前置镜像" key:@"mirrorFront"],

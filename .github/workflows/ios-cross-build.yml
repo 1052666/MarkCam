@@ -1,0 +1,120 @@
+name: iOS cross-build and regression
+
+on:
+  push:
+    branches: [main, 'fix/**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-build-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  capture-runtime:
+    runs-on: macos-14
+    timeout-minutes: 10
+    steps:
+      - name: Check out the source commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Execute the real photo delegate with controlled callback order
+        run: python3 tests/test_capture_pipeline.py
+      - name: Upload native capture regression report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: MarkCam-capture-runtime-${{ github.sha }}
+          path: dist/capture-pipeline-regression-report.json
+          if-no-files-found: error
+          retention-days: 30
+
+  build:
+    needs: capture-runtime
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      IOS_SDK: /tmp/iPhoneOS16.5.sdk
+      SDK_URL: https://github.com/theos/sdks/releases/download/master-146e41f/iPhoneOS16.5.sdk.tar.xz
+      SDK_SHA256: 5e0fd3f01266cce4ce012d4a99b38eb56578fca40d09edc81cd83dee958202fb
+      PYTHONUTF8: '1'
+    steps:
+      - name: Check out the source commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Install Linux build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y clang-18 lld-18 python3-pil
+          echo /usr/lib/llvm-18/bin >> "$GITHUB_PATH"
+
+      - name: Fetch and verify the compatible SDK
+        run: |
+          curl --fail --location --retry 3 --output /tmp/iPhoneOS16.5.sdk.tar.xz "$SDK_URL"
+          echo "$SDK_SHA256  /tmp/iPhoneOS16.5.sdk.tar.xz" | sha256sum --check --strict
+          tar -xJf /tmp/iPhoneOS16.5.sdk.tar.xz -C /tmp
+          test -f "$IOS_SDK/SDKSettings.plist"
+          clang --version
+          ld64.lld --version
+
+      - name: Cross-compile and package the arm64 IPA
+        run: python3 scripts/build.py
+
+      - name: Run every regression and validate the IPA
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, subprocess, sys
+          tests = sorted(pathlib.Path('tests').glob('test_*.py'))
+          assert tests, 'No regression scripts found'
+          results = []
+          for test in [*tests, pathlib.Path('scripts/validate.py')]:
+              print(f'::group::{test}', flush=True)
+              result = subprocess.run([sys.executable, str(test)])
+              results.append({'script': str(test), 'exit_code': result.returncode})
+              print('::endgroup::', flush=True)
+          failed = [r for r in results if r['exit_code'] != 0]
+          report = {'status': 'failed' if failed else 'passed',
+                    'scope': 'Linux cross-compilation, host C tests, source contracts and IPA validation; no iPhone runtime tests',
+                    'source_commit': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
+                    'device_tested': False, 'scripts': results}
+          pathlib.Path('dist/test-status.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
+          sys.exit(bool(failed))
+          PY
+
+      - name: Include the successful native capture report
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: MarkCam-capture-runtime-${{ github.sha }}
+          path: dist/
+
+      - name: Generate source archive and delivery checksums
+        run: |
+          python3 tests/render_layout_review.py
+          python3 scripts/publish-local.py
+          cd dist
+          sha256sum --check --strict SHA256SUMS.txt
+
+      - name: Upload verified IPA, source and reports
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: MarkCam-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload diagnostics for a failed build
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: MarkCam-failed-checks-${{ github.sha }}
+          path: dist/*.json
+          if-no-files-found: ignore
+          retention-days: 14

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.1 (6) — capture recovery and responsive shooting test release
+- Refresh shutter admission even when rendering is paused or memory-constrained; release the editor's queue lock on return to the camera.
+- Retain a separate delegate and immutable settings per photo. Release the ordinary shutter after exposure; admit at most two in-flight photos within the six-job pending budget.
+- Move JPEG writes and completion bookkeeping off main; avoid repeating exposure locks and preview reconfiguration for each shutter press.
+- Add an enabled-by-default fast-capture setting, with a visible low-light quality tradeoff and an option to restore balanced quality. Keep configured photo dimensions and balanced Live capture.
+- Resume transient memory and confirmed photo-permission failures without retrying uncertain PhotoKit saves. Validate recovered settings before processing; preserve incomplete recordings for explicit recovery.
+- Add macOS callback runtime regression, host C admission/recovery tests, four individual negative selector compile controls, and a pinned Linux IPA build workflow. These checks do not certify iPhone camera performance or Live playback.
+
 ## 1.2.0 (5) — early test release
 - Persist capture resources and job metadata before releasing the shutter; move watermark/tone rendering and PhotoKit saving into a serial utility queue.
 - Bound pending work (ordinary photos: 6; Live capture requires fewer than 2 pending jobs). Defer worker startup after capture, and prevent new capture during heavy Live/video processing.

@@ -4,6 +4,7 @@
 NS_ASSUME_NONNULL_BEGIN
 @interface WMEngine : NSObject
 + (instancetype)shared;
++ (BOOL)isValidSettingsSnapshot:(nullable id)settings;
 @property(nonatomic,strong) NSMutableDictionary *settings;
 - (void)save;
 - (void)clearCaches;

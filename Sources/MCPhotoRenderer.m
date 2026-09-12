@@ -1,9 +1,11 @@
 #import "MCPhotoRenderer.h"
 #import "WMEngine.h"
+#import "MCWorkPolicy.h"
 #import <CoreImage/CoreImage.h>
 #import <ImageIO/ImageIO.h>
 #import <os/proc.h>
-static NSError *PRError(NSString *s){return [NSError errorWithDomain:@"MarkCam.Render" code:1 userInfo:@{NSLocalizedDescriptionKey:s}];}
+NSString * const MCPhotoRendererErrorDomain = @"MarkCam.Render";
+static NSError *PRError(NSString *s){return [NSError errorWithDomain:MCPhotoRendererErrorDomain code:MCPhotoRendererErrorFailed userInfo:@{NSLocalizedDescriptionKey:s}];}
 @implementation MCPhotoRenderer
 + (BOOL)renderSource:(NSURL *)source destination:(NSURL *)destination settings:(NSDictionary *)settings date:(NSDate *)date error:(NSError **)error {
  @autoreleasepool {
@@ -12,17 +14,30 @@ static NSError *PRError(NSString *s){return [NSError errorWithDomain:@"MarkCam.R
   [NSFileManager.defaultManager removeItemAtURL:partial error:nil];
   CIContext *context=nil;BOOL ok=NO;
   @try {
+   if(![WMEngine isValidSettingsSnapshot:settings]){if(error)*error=PRError(@"照片恢复设置无效，原片保留");return NO;}
    CGImageSourceRef src=CGImageSourceCreateWithURL((__bridge CFURLRef)source,(__bridge CFDictionaryRef)@{(__bridge NSString *)kCGImageSourceShouldCache:@NO});
+   CFStringRef type=src?CGImageSourceGetType(src):NULL;
+   BOOL completeJPEG=type&&CFEqual(type,CFSTR("public.jpeg"))&&CGImageSourceGetStatusAtIndex(src,0)==kCGImageStatusComplete;
    NSDictionary *props=src?CFBridgingRelease(CGImageSourceCopyPropertiesAtIndex(src,0,NULL)):nil;if(src)CFRelease(src);
    double width=[props[(__bridge NSString *)kCGImagePropertyPixelWidth]doubleValue],height=[props[(__bridge NSString *)kCGImagePropertyPixelHeight]doubleValue];
    if(width<1||height<1||!isfinite(width*height)||width*height>64000000){if(error)*error=PRError(@"原片尺寸无效");return NO;}
+   NSDictionary *tone=settings[@"tone"];
+   BOOL watermark=settings[@"watermarkEnabled"]?[settings[@"watermarkEnabled"]boolValue]:YES;
+   BOOL needsRendering=MCPhotoNeedsRendering(watermark,[tone[@"brightness"]doubleValue],tone[@"contrast"]?[tone[@"contrast"]doubleValue]:1,tone[@"saturation"]?[tone[@"saturation"]doubleValue]:1,[tone[@"warmth"]doubleValue]);
+   if(completeJPEG&&!needsRendering){
+    // Preserve original JPEG bytes, EXIF orientation and Live Photo pairing.
+    // With no edits there is no reason to decode or compress the image again.
+    ok=[NSFileManager.defaultManager copyItemAtURL:source toURL:partial error:error];
+    if(ok)ok=[NSFileManager.defaultManager moveItemAtURL:partial toURL:destination error:error];
+    return ok;
+   }
    uint64_t free=os_proc_available_memory();uint64_t estimate=(uint64_t)(width*height*16)+80ULL*1024*1024;
-   if(free&&free<estimate){if(error)*error=PRError(@"可用内存不足，原片保留，稍后在待保存重试");return NO;}
+   if(free<estimate){if(error)*error=[NSError errorWithDomain:MCPhotoRendererErrorDomain code:MCPhotoRendererErrorInsufficientMemory userInfo:@{NSLocalizedDescriptionKey:@"可用内存不足，原片保留，释放内存后自动继续"}];return NO;}
    CIImage *input=[CIImage imageWithContentsOfURL:source options:@{kCIImageApplyOrientationProperty:@YES}];
    if(!input||CGRectIsEmpty(input.extent)||CGRectIsInfinite(input.extent)){if(error)*error=PRError(@"无法读取原片");return NO;}
    CGRect extent=input.extent;input=[input imageByApplyingTransform:CGAffineTransformMakeTranslation(-extent.origin.x,-extent.origin.y)];CGSize size=extent.size;
    CIImage *output=[[WMEngine shared]applyTone:input settings:settings];
-   if([settings[@"watermarkEnabled"]boolValue]){
+   if(watermark){
     // Cap only the overlay canvas, not the captured photo. This reduces full-size
     // transparent raster memory, at a documented fine-text sharpness trade-off.
     CGFloat scale=MIN(1,2048./MAX(size.width,size.height));CGSize small=CGSizeMake(MAX(1,round(size.width*scale)),MAX(1,round(size.height*scale)));

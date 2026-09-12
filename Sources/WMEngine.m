@@ -24,7 +24,7 @@ static BOOL ValidSettings(id s) {
  if(s[@"schemaVersion"]&&(![s[@"schemaVersion"] isKindOfClass:NSNumber.class]||[s[@"schemaVersion"] doubleValue]!=1))return NO;
  id tone=s[@"tone"]; if(tone&&![tone isKindOfClass:NSDictionary.class])return NO;
  for(NSString *k in @[@"brightness",@"contrast",@"saturation",@"warmth"])if(tone[k]&&(![tone[k] isKindOfClass:NSNumber.class]||!isfinite([tone[k] doubleValue])))return NO;
- for(NSString *k in @[@"watermarkEnabled",@"keepOriginal",@"gridEnabled",@"mirrorFront",@"flashMode",@"timerSeconds",@"livePhotoEnabled",@"exposureBias",@"smoothPreview"])if(s[k]&&(![s[k] isKindOfClass:NSNumber.class]||!isfinite([s[k]doubleValue])))return NO;
+ for(NSString *k in @[@"watermarkEnabled",@"keepOriginal",@"gridEnabled",@"mirrorFront",@"flashMode",@"timerSeconds",@"livePhotoEnabled",@"exposureBias",@"smoothPreview",@"fastCapture"])if(s[k]&&(![s[k] isKindOfClass:NSNumber.class]||!isfinite([s[k]doubleValue])))return NO;
  id ts=s[@"userTemplates"]; if(ts){if(![ts isKindOfClass:NSArray.class]||[ts count]>60)return NO;for(id t in ts)if(![t isKindOfClass:NSDictionary.class]||![t[@"name"] isKindOfClass:NSString.class]||[t[@"name"] length]>100||!ValidLayers(t[@"layers"]))return NO;}return YES;
 }
 static UIImage *Decode(NSData *data) {
@@ -37,9 +37,10 @@ static UIImage *Decode(NSData *data) {
 @property(nonatomic,strong) CIContext *context;
 @end
 @implementation WMEngine
++ (BOOL)isValidSettingsSnapshot:(id)settings { return ValidSettings(settings); }
 + (instancetype)shared { static WMEngine *e;static dispatch_once_t once;dispatch_once(&once,^{e=[WMEngine new];});return e; }
 - (NSURL *)documentsURL { NSURL *u=[NSFileManager.defaultManager URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask].firstObject;[NSFileManager.defaultManager createDirectoryAtURL:u withIntermediateDirectories:YES attributes:nil error:nil];return u; }
-- (NSMutableDictionary *)defaults {return [@{@"schemaVersion":@1,@"watermarkEnabled":@YES,@"layers":[self presets][0][@"layers"],@"tone":@{@"brightness":@0,@"contrast":@1,@"saturation":@1,@"warmth":@0},@"keepOriginal":@NO,@"gridEnabled":@YES,@"mirrorFront":@YES,@"flashMode":@0,@"timerSeconds":@0,@"livePhotoEnabled":@NO,@"exposureBias":@0,@"smoothPreview":@NO,@"userTemplates":@[]} mutableCopy];}
+- (NSMutableDictionary *)defaults {return [@{@"schemaVersion":@1,@"watermarkEnabled":@YES,@"layers":[self presets][0][@"layers"],@"tone":@{@"brightness":@0,@"contrast":@1,@"saturation":@1,@"warmth":@0},@"keepOriginal":@NO,@"gridEnabled":@YES,@"mirrorFront":@YES,@"flashMode":@0,@"timerSeconds":@0,@"livePhotoEnabled":@NO,@"exposureBias":@0,@"smoothPreview":@NO,@"fastCapture":@YES,@"userTemplates":@[]} mutableCopy];}
 - (instancetype)init {
  if((self=[super init])){
  _context=[CIContext contextWithOptions:@{kCIContextCacheIntermediates:@NO}];_settings=[self defaults];
