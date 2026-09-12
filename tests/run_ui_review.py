@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Build actual UIKit code for Simulator, exercise it, and export honest UI evidence."""
-import json, os, pathlib, platform, plistlib, shutil, subprocess, time
+import json, os, re, pathlib, platform, plistlib, shutil, subprocess, time
 
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 BUILD=ROOT/'build'/'ui-review'
@@ -56,15 +56,29 @@ for label,device in [('standard',regular),('compact',small)]:
             launch_output=destination/('launch-'+str(launch_index));launch_output.mkdir(exist_ok=True)
             previous=container/'Documents/UIReview/ui-review-report.json'
             if previous.exists():previous.unlink()
+            checkpoint=previous.parent/'checkpoint.json'
+            if checkpoint.exists():checkpoint.unlink()
             run('xcrun','simctl','launch','--terminate-running-process','--stdout='+str(launch_output/'stdout.log'),'--stderr='+str(launch_output/'stderr.log'),udid,IDENTIFIER)
             container=pathlib.Path(output('xcrun','simctl','get_app_container',udid,IDENTIFIER,'data'))
             directory=container/'Documents/UIReview';report_path=directory/'ui-review-report.json'
             deadline=time.monotonic()+160
-            while not report_path.exists() and time.monotonic()<deadline:time.sleep(.5)
+            captured=set()
+            while not report_path.exists() and time.monotonic()<deadline:
+                if checkpoint.exists():
+                    request=json.loads(checkpoint.read_text())
+                    name,token=request['name'],request['token']
+                    assert re.fullmatch(r'[0-9]{2}-[a-z-]+',name) and re.fullmatch(r'[0-9A-Fa-f-]{36}',token)
+                    if token not in captured:
+                        time.sleep(.2) # Let the current transaction reach the compositor.
+                        run('xcrun','simctl','io',udid,'screenshot',directory/(name+'.png'),timeout=30)
+                        (directory/(token+'.captured')).write_text('captured')
+                        captured.add(token)
+                time.sleep(.1)
             if not report_path.exists():
                 for log in launch_output.glob('*.log'):print(log.read_text(errors='replace'))
                 raise RuntimeError('Simulator UI review did not finish')
-            for path in directory.iterdir():shutil.copy2(path,launch_output/path.name)
+            for path in directory.iterdir():
+                if path.suffix=='.png' or path.name=='ui-review-report.json':shutil.copy2(path,launch_output/path.name)
             report=json.loads(report_path.read_text());assert report['launch_number']==launch_index, 'App data did not survive process relaunch';report['device']=device['name'];report['source_commit']=output('git','-C',ROOT,'rev-parse','HEAD')
             (launch_output/'ui-review-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
             print(json.dumps({k:v for k,v in report.items() if k not in ('checks','screenshots')},ensure_ascii=False),flush=True)

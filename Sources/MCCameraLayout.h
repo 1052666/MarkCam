@@ -12,7 +12,7 @@ static inline MCCameraLayout MCLayout(double w,double h,double top,double bottom
   int video=aspect<.65;
   double stageTop=top,space=fmax(1,(video?h-bottom:dockY)-stageTop);
   double fw=fmin(w,space*aspect),fh=fw/aspect;
-  a.stage=MCR((w-fw)/2,stageTop+(space-fh)/2,fw,fh);
+  a.stage=MCR((w-fw)/2,stageTop+(video?(space-fh)/2:0),fw,fh);
   a.mode=MCR((w-156)/2,dockY+2,156,44);
   double d=compact?68:76,sy=dockY+54;
   a.shutter=MCR((w-d)/2,sy,d,d);a.files=MCR(24,sy+(d-52)/2,52,52);a.flip=MCR(w-76,sy+(d-52)/2,52,52);

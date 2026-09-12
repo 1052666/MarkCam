@@ -35,11 +35,15 @@ jobs:
           retention-days: 30
 
   ui-review:
+    strategy:
+      fail-fast: false
+      matrix:
+        ios: ['26', '18']
     runs-on: macos-15
     timeout-minutes: 25
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.0.1.app/Contents/Developer
-      REVIEW_IOS_MAJOR: '26'
+      REVIEW_IOS_MAJOR: ${{ matrix.ios }}
     steps:
       - name: Check out the source commit
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -52,14 +56,14 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: MarkCam-ui-evidence-${{ github.sha }}
+          name: MarkCam-ui-evidence-${{ matrix.ios }}-${{ github.sha }}
           path: dist/ui-review/
           if-no-files-found: warn
           retention-days: 30
       - name: Upload UIKit regression summary
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: MarkCam-ui-runtime-${{ github.sha }}
+          name: MarkCam-ui-runtime-${{ matrix.ios }}-${{ github.sha }}
           path: dist/ui-regression-report.json
           if-no-files-found: error
           retention-days: 30
@@ -120,8 +124,16 @@ jobs:
       - name: Include the successful UIKit Simulator report
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: MarkCam-ui-runtime-${{ github.sha }}
+          name: MarkCam-ui-runtime-26-${{ github.sha }}
           path: dist/
+
+      - name: Include the successful older-iOS fallback report
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: MarkCam-ui-runtime-18-${{ github.sha }}
+          path: /tmp/markcam-fallback/
+      - name: Retain fallback evidence separately
+        run: cp /tmp/markcam-fallback/ui-regression-report.json dist/ui-fallback-regression-report.json
 
       - name: Generate source archive and delivery checksums
         run: |

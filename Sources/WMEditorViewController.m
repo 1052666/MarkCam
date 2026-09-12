@@ -128,9 +128,9 @@ static NSString *WMEHex(UIColor *color) {
     self.sectionPicker=[[UISegmentedControl alloc] initWithItems:@[@"图层",@"调色",@"模板",@"设置"]];
     self.sectionPicker.translatesAutoresizingMaskIntoConstraints=NO;self.sectionPicker.selectedSegmentIndex=self.opensSettings?3:0;self.opensSettings=NO;
     self.sectionPicker.accessibilityLabel=@"水印工坊工具";self.sectionPicker.accessibilityIdentifier=@"editor.sections";
-    
+
     [self.sectionPicker setTitleTextAttributes:@{NSForegroundColorAttributeName:UIColor.labelColor,NSFontAttributeName:MCCompactFont(14,UIFontWeightSemibold)} forState:UIControlStateNormal];
-    
+
     [self.sectionPicker addTarget:self action:@selector(sectionChanged:) forControlEvents:UIControlEventValueChanged];
     [self.view addSubview:self.sectionPicker];
     // Default navigation chrome adopts Liquid Glass when linked with the iOS 26 SDK.
@@ -224,7 +224,7 @@ static NSString *WMEHex(UIColor *color) {
     [self updateReticle];
     CGFloat available=MAX(180,self.view.safeAreaLayoutGuide.layoutFrame.size.height);
     CGFloat hintHeight=largeText?0:MAX(44,[self.canvasHint sizeThatFits:CGSizeMake(width-32,CGFLOAT_MAX)].height+4);
-    CGFloat maxHeight=largeText?92:MIN(260,MAX(56,available*.43-hintHeight-64));
+    CGFloat maxHeight=largeText?92:MIN(420,MAX(56,MIN(available*.55-hintHeight,available-hintHeight-230)));
     CGSize size=self.preparedImage.size; CGFloat aspect=(size.height>0)?size.width/size.height:.75;
     CGFloat w=MIN(MAX(1,width-32),maxHeight*aspect); CGFloat h=w/MAX(.001,aspect);
     self.canvas.frame=CGRectMake((width-w)/2,8,w,h); self.photoView.frame=self.canvas.bounds; self.overlayView.frame=self.canvas.bounds;

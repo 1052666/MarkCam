@@ -1,24 +1,24 @@
-# 印记相机 · MarkCam 1.3.0 测试版
+# 印记相机 · MarkCam 1.4.0 测试版
 
 原生 Objective-C iPhone 相机，支持持续保存的多层水印、调色、照片、录像和 Live Photo。
 
-**重新整理原生相机与水印工坊：双环快门立即反馈，编辑工具分为图层、调色、模板、设置。普通照片曝光结束后可以继续按快门，最多两张在途，共用六张待处理容量。**
+**适配 iOS 26 原生 Liquid Glass：系统玻璃按钮、轻量相机控制、原生编辑器导航。修复已有权限的冷启动/前台恢复路径；中断和失败的历史作品不再长期占用连拍名额。普通照片曝光结束后可以继续按快门，最多两张在途，共用六张可运行任务容量。**
 
-“连拍优先”默认开启，设置中说明弱光细节的取舍；关闭可恢复画质/速度平衡。编辑器拖动即时预览，结束操作时再保存，减少频繁写盘。改造采用 [Emil Kowalski 的设计技能](https://github.com/emilkowalski/skills)，详见 [1.3.0 发布说明](docs/RELEASE-1.3.0.md)。
+“连拍优先”默认开启，设置中说明弱光细节的取舍；关闭可恢复画质/速度平衡。编辑器拖动即时预览，结束操作时再保存，减少频繁写盘。改造采用 [Emil Kowalski 的设计技能](https://github.com/emilkowalski/skills)，详见 [1.4.0 发布说明](docs/RELEASE-1.4.0.md)。
 
 <p align="center"><img src="Resources/AppIcon1024.png" width="160" alt="印记相机图标"></p>
 
 ## 下载与验证
 
-在 [Releases → v1.3.0-rc.1](https://github.com/1052666/MarkCam/releases/tag/v1.3.0-rc.1) 下载需重签的 `MarkCam-1.3.0-resign-required.ipa`、对应源码与 SHA-256 清单。二进制通过 Release 上传，不放入 Git 历史。
+在 [Releases → v1.4.0-rc.1](https://github.com/1052666/MarkCam/releases/tag/v1.4.0-rc.1) 下载需重签的 `MarkCam-1.4.0-resign-required.ipa`、对应源码与 SHA-256 清单。二进制通过 Release 上传，不放入 Git 历史。
 
-GitHub Actions 对同一提交执行 macOS 回调运行测试、iOS Simulator UIKit 操作与截图检查、Linux iOS 交叉编译、C 门控/布局测试、正负回调编译回归和 IPA 完整性检查；结果见 [构建记录](https://github.com/1052666/MarkCam/actions) 及下载附件。**模拟器截图使用标注的取景样本；尚未完成 iPhone 真机验收，也未测量实际帧率、快门延迟或峰值内存。**
+GitHub Actions 对同一提交执行 macOS 回调运行测试、iOS Simulator UIKit 操作与截图检查、Xcode 26 / iOS 26 SDK 编译、C 门控/布局测试、正负回调编译回归和 IPA 完整性检查；结果见 [构建记录](https://github.com/1052666/MarkCam/actions) 及下载附件。**模拟器截图使用标注的取景样本；尚未完成 iPhone 真机验收，也未测量实际帧率、快门延迟或峰值内存。**
 
 IPA 仅有 Mach-O ad-hoc 签名，没有 Apple 开发/分发签名与设备描述文件，普通 iPhone 需先用有效签名方式重签。请备份模板和 Pending，使用原 Bundle ID 与签名身份覆盖安装。
 
 ## 1.2.0：异步合成与资源控制
 - 1.2.0 中原片及恢复记录先落盘，系统拍摄结束后释放快门；1.2.1 普通照片在曝光结束后即可接纳下一张；合成/相册保存移入单任务队列，不在界面线程合成。
-- 普通照片待处理上限6张，Live接纳条件更保守；不能无限连拍，Live/视频重型处理期间仍限制新拍摄。
+- 普通照片可运行待处理任务上限6张，Live接纳条件更保守；不能无限连拍，Live/视频重型处理期间仍限制新拍摄。
 - 从文件进行Core Image渲染，减少大图中间副本；水印画布最长边2048px，保留照片尺寸，细小水印可能较软。
 - 加入可用内存检查、压力/温度反馈和缓存清理；**尚未实测内存改善，不能保证其他App不被系统回收**。
 - 支持暂停及保留待处理素材；切后台只有短时收尾时限，不保证持续运行，失败/不明确保存状态需在“待保存”查看。
@@ -91,7 +91,7 @@ IPA 仅有 Mach-O ad-hoc 签名，没有 Apple 开发/分发签名与设备描�
 
 ## 快速使用
 1. 完成合法重签后安装，首次打开允许相机权限。
-2. 点“水印 · 模板 · 调色”进入水印工坊。
+2. 点底部“水印”进入水印工坊。
 3. 从内置预设开始，或“添加”文字、日期、图片。
 4. 点选下方图层，在顶部画布拖动/双指缩放/旋转，调整颜色、大小等。
 5. 点“完成”返回相机，水印设置已保存在本机。
@@ -127,9 +127,11 @@ IPA 仅有 Mach-O ad-hoc 签名，没有 Apple 开发/分发签名与设备描�
 - GitHub 凭据不能替代 Apple 签名证书。本仓库和 Release 不包含令牌、证书、设备描述文件、原始崩溃日志或用户照片。
 
 ## 本地重新构建
-工具：Alpine `clang lld zip curl py3-pillow`。SDK：theos公开release的iPhoneOS16.5.sdk，解压到 `/tmp/iPhoneOS16.5.sdk`（支持符号链接的Linux路径）。
+工具：macOS、Xcode 26+、Python 3 与 Pillow。CI 固定使用 Xcode 26.0.1，脚本通过 `xcrun` 获取 SDK，目标 arm64，最低 iOS 16.5。
 
 ```sh
+export DEVELOPER_DIR=/Applications/Xcode_26.0.1.app/Contents/Developer
+export IOS_SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
 python3 scripts/build.py
 python3 scripts/validate.py
 python3 tests/test_photo_contract.py
@@ -139,7 +141,7 @@ python3 tests/render_layout_review.py
 python3 scripts/publish-local.py  # 生成源码压缩包和 SHA256SUMS
 ```
 
-可通过 `IOS_SDK` 指定SDK路径。脚本只清理本项目 `build/release/`，不清理其他项目。无需GitHub令牌编译。若未来用于正式商店发行，建议迁移官方Xcode/SDK并完成完整签名、隐私及真机测试。
+可通过 `IOS_SDK` 指定SDK路径。脚本只清理本项目 `build/release/`，不清理其他项目。无需GitHub令牌编译。用于正式商店发行仍需完成分发签名、隐私审核及真机测试。
 
 ## 历史版本检查记录（1.2.0 及更早）
 - 1.2.0 完整工程已真实交叉编译、链接并生成本次 IPA；没有因此确认真机功能、内存或连续拍摄表现。

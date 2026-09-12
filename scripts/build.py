@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reproducible local arm64 iOS cross-build. No account credentials required."""
+"""Native Apple SDK arm64 iOS build. No account credentials required."""
 import os, pathlib, plistlib, shutil, subprocess, sys, hashlib, json, struct, zipfile, time
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 VERSION='1.4.0'
@@ -12,6 +12,8 @@ BUILD=ROOT/'build'/'release'
 APP=BUILD/'Payload'/'MarkCam.app'
 DIST=ROOT/'dist'
 if not SDK.is_dir(): sys.exit('Missing iOS SDK: '+str(SDK))
+SDK_VERSION=str(plistlib.loads((SDK/'SDKSettings.plist').read_bytes())['Version'])
+if int(SDK_VERSION.split('.')[0])<26: sys.exit('The selected SDK must be iOS 26 or newer.')
 for tool in ('clang','codesign'):
     if not shutil.which(tool): sys.exit('Missing '+tool)
 commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
