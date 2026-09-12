@@ -25,6 +25,10 @@ if not args.static_only:
      stage=a['stage'];check(key+' preserves field aspect',abs(stage[2]/stage[3]-aspect)<1e-7)
      for k in ['stage','mode','shutter','files','flip','edit','watermark','live','settings']:
       x,y,ww,hh=a[k];check(key+' bounds '+k,x>=-.01 and y>=-.01 and x+ww<=w+.01 and y+hh<=h+.01)
+     for k in ['mode','shutter','files','flip','edit','watermark','live','settings','lenses','zoomSlider']:
+      check(key+' 44pt hit area '+k,a[k][2]>=44 and a[k][3]>=44)
+     for left_key,right_key in [('mode','shutter'),('files','shutter'),('flip','shutter'),('files','flip'),('files','edit'),('flip','edit'),('watermark','live'),('live','settings')]:
+      check(key+' separate '+left_key+'/'+right_key,not overlaps(a[left_key],a[right_key]))
      for k in ['shutter','mode','files','flip','edit']:
       if mode=='photo' or land:check(key+' preview avoids '+k,not overlaps(stage,a[k]))
       else:

@@ -2,8 +2,8 @@
 """Reproducible local arm64 iOS cross-build. No account credentials required."""
 import os, pathlib, plistlib, shutil, subprocess, sys, hashlib, json, struct, zipfile, time
 ROOT=pathlib.Path(__file__).resolve().parents[1]
-VERSION='1.2.1'
-BUILD_NUMBER='6'
+VERSION='1.3.0'
+BUILD_NUMBER='7'
 SDK=pathlib.Path(os.environ.get('IOS_SDK','/tmp/iPhoneOS16.5.sdk'))
 BUILD=ROOT/'build'/'release'
 APP=BUILD/'Payload'/'MarkCam.app'

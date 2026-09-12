@@ -7,6 +7,7 @@
 #import "MCProcessingQueue.h"
 #import "MCPhotoCaptureProcessor.h"
 #import "MCWorkPolicy.h"
+#import "MCInterface.h"
 #import <os/proc.h>
 #import <mach/mach.h>
 #import <AVFoundation/AVFoundation.h>
@@ -14,7 +15,7 @@
 #import <CoreImage/CoreImage.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
-static UIColor *MCAccent(void){return [UIColor colorWithRed:.48 green:.92 blue:.78 alpha:1];}
+static UIColor *MCAccent(void){return MCInterfaceAccent();}
 static NSString *MCID(void){return [NSString stringWithFormat:@"%013lld-%@",(long long)(NSDate.date.timeIntervalSince1970*1000),NSUUID.UUID.UUIDString];}
 @interface MCGridView:UIView
 @property(nonatomic) BOOL grid;
@@ -56,7 +57,9 @@ static NSString *MCID(void){return [NSString stringWithFormat:@"%013lld-%@",(lon
 @property(nonatomic,strong) UILabel *titleLabel;
 @property(nonatomic,strong) UILabel *recordLabel;
 @property(nonatomic,strong) UILabel *countdownLabel;
-@property(nonatomic,strong) UIButton *shutter;
+@property(nonatomic,strong) MCShutterButton *shutter;
+@property(nonatomic,strong) MCChromeView *captureDock;
+@property(nonatomic,strong) UIView *focusRing;
 @property(nonatomic,strong) UIButton *switchButton;
 @property(nonatomic,strong) UIButton *editButton;
 @property(nonatomic,strong) UIButton *filesButton;
@@ -103,7 +106,7 @@ static NSString *MCID(void){return [NSString stringWithFormat:@"%013lld-%@",(lon
 
 @implementation CameraViewController
 - (void)viewDidLoad {
- [super viewDidLoad];self.view.backgroundColor=[UIColor colorWithRed:.045 green:.065 blue:.068 alpha:1];self.overrideUserInterfaceStyle=UIUserInterfaceStyleDark;
+ [super viewDidLoad];self.view.backgroundColor=MCInterfaceBackground();self.overrideUserInterfaceStyle=UIUserInterfaceStyleDark;
  self.sessionQueue=dispatch_queue_create("markcam.capture",DISPATCH_QUEUE_SERIAL);self.framesQueue=dispatch_queue_create("markcam.frames",dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL,QOS_CLASS_USER_INTERACTIVE,0));self.renderQueue=dispatch_queue_create("markcam.render",DISPATCH_QUEUE_SERIAL);self.overlayQueue=dispatch_queue_create("markcam.overlay",dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL,QOS_CLASS_USER_INITIATED,0));self.session=[AVCaptureSession new];self.captureOrientation=AVCaptureVideoOrientationPortrait;self.wideReference=1;self.rememberedBackZoom=1;
  self.photoCaptures=[NSMutableDictionary new];
  self.workQueue=[MCProcessingQueue new];self.workQueue.foreground=YES;__weak typeof(self) queueOwner=self;self.workQueue.onChange=^{[queueOwner queueChanged];};[self.workQueue refresh];
@@ -115,17 +118,20 @@ static NSString *MCID(void){return [NSString stringWithFormat:@"%013lld-%@",(lon
  self.clockTimer=[NSTimer scheduledTimerWithTimeInterval:1 target:self selector:@selector(tick) userInfo:nil repeats:YES];[self requestCamera];
 }
 - (UIButton *)button:(NSString *)title action:(SEL)action {
- UIButton *b=[UIButton buttonWithType:UIButtonTypeSystem];[b setTitle:title forState:UIControlStateNormal];[b setTitleColor:MCAccent() forState:UIControlStateNormal];b.titleLabel.font=[UIFont systemFontOfSize:14 weight:UIFontWeightSemibold];b.backgroundColor=[UIColor colorWithWhite:1 alpha:.065];b.layer.cornerRadius=12;[b addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];[self.view addSubview:b];return b;
+ MCToolButton *button=[[MCToolButton alloc] initWithFrame:CGRectZero];
+ [button setTitle:title forState:UIControlStateNormal];
+ [button addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
+ [self.view addSubview:button];return button;
 }
 - (void)makeUI {
  self.titleLabel=[UILabel new];self.titleLabel.text=@"印记相机  /  MARK";self.titleLabel.font=[UIFont systemFontOfSize:21 weight:UIFontWeightBold];self.titleLabel.textColor=UIColor.whiteColor;[self.view addSubview:self.titleLabel];
- self.watermarkButton=[self button:@"水印开启" action:@selector(toggleWatermark)];
- self.liveButton=[self button:@"LIVE 关" action:@selector(toggleLive)];self.liveButton.accessibilityLabel=@"实况照片开关";
- self.settingsButton=[self button:@"设置" action:@selector(openSettings)];self.settingsButton.accessibilityLabel=@"打开相机设置，曝光和实况照片";
+ self.watermarkButton=[self button:@"水印" action:@selector(toggleWatermark)];MCConfigureSymbol(self.watermarkButton,@"checkmark.seal",16);self.watermarkButton.accessibilityLabel=@"自动添加水印";self.watermarkButton.accessibilityIdentifier=@"camera.watermark";
+ self.liveButton=[self button:@"LIVE" action:@selector(toggleLive)];MCConfigureSymbol(self.liveButton,@"livephoto",18);self.liveButton.accessibilityLabel=@"实况照片开关";self.liveButton.accessibilityIdentifier=@"camera.live";
+ self.settingsButton=[self button:@"" action:@selector(openSettings)];MCConfigureSymbol(self.settingsButton,@"gearshape",20);self.settingsButton.accessibilityLabel=@"相机设置";self.settingsButton.accessibilityIdentifier=@"camera.settings";
  self.stage=[UIView new];self.stage.backgroundColor=UIColor.blackColor;self.stage.clipsToBounds=YES;[self.view addSubview:self.stage];
  self.preview=[[MCPreviewView alloc]initWithFrame:CGRectZero];[self.stage addSubview:self.preview];__weak typeof(self) weak=self;self.preview.onFailure=^(NSString *reason){weak.gpuFailed=YES;[weak updatePreviewRoute];[weak status:@"已切换系统流畅取景，调色仍应用到成片"];};
  self.nativePreview=[AVCaptureVideoPreviewLayer layerWithSession:self.session];self.nativePreview.videoGravity=AVLayerVideoGravityResizeAspect;[self.stage.layer insertSublayer:self.nativePreview atIndex:0];
- self.previewHint=[UILabel new];self.previewHint.textColor=[UIColor colorWithWhite:1 alpha:.85];self.previewHint.font=[UIFont systemFontOfSize:11 weight:UIFontWeightMedium];self.previewHint.textAlignment=NSTextAlignmentCenter;self.previewHint.backgroundColor=[UIColor colorWithWhite:0 alpha:.3];self.previewHint.layer.cornerRadius=8;self.previewHint.clipsToBounds=YES;[self.stage addSubview:self.previewHint];
+ self.previewHint=[UILabel new];self.previewHint.textColor=[UIColor colorWithWhite:1 alpha:.85];self.previewHint.font=MCCompactFont(11,UIFontWeightMedium);self.previewHint.textAlignment=NSTextAlignmentCenter;self.previewHint.backgroundColor=[UIColor colorWithWhite:0 alpha:.3];self.previewHint.layer.cornerRadius=8;self.previewHint.clipsToBounds=YES;[self.stage addSubview:self.previewHint];
  self.overlay=[UIImageView new];self.overlay.contentMode=UIViewContentModeScaleToFill;self.overlay.userInteractionEnabled=NO;[self.stage addSubview:self.overlay];
  self.gridView=[MCGridView new];self.gridView.backgroundColor=UIColor.clearColor;self.gridView.userInteractionEnabled=NO;[self.stage addSubview:self.gridView];
  self.zoomSlider=[UISlider new];self.zoomSlider.minimumValue=1;self.zoomSlider.maximumValue=8;self.zoomSlider.value=1;self.zoomSlider.tintColor=MCAccent();self.zoomSlider.accessibilityLabel=@"相机缩放倍率";[self.zoomSlider addTarget:self action:@selector(zoomSliderChanged:) forControlEvents:UIControlEventValueChanged];[self.stage addSubview:self.zoomSlider];
@@ -134,12 +140,15 @@ static NSString *MCID(void){return [NSString stringWithFormat:@"%013lld-%@",(lon
  UITapGestureRecognizer *tap=[[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(focus:)];tap.delegate=self;[self.stage addGestureRecognizer:tap];UIPinchGestureRecognizer *pinch=[[UIPinchGestureRecognizer alloc]initWithTarget:self action:@selector(zoom:)];pinch.delegate=self;[self.stage addGestureRecognizer:pinch];
  self.recordLabel=[UILabel new];self.recordLabel.textColor=UIColor.systemRedColor;self.recordLabel.font=[UIFont monospacedDigitSystemFontOfSize:15 weight:UIFontWeightSemibold];self.recordLabel.textAlignment=NSTextAlignmentCenter;[self.stage addSubview:self.recordLabel];
  self.countdownLabel=[UILabel new];self.countdownLabel.font=[UIFont systemFontOfSize:68 weight:UIFontWeightLight];self.countdownLabel.textColor=UIColor.whiteColor;self.countdownLabel.textAlignment=NSTextAlignmentCenter;[self.stage addSubview:self.countdownLabel];
- self.statusLabel=[UILabel new];self.statusLabel.numberOfLines=2;self.statusLabel.textAlignment=NSTextAlignmentCenter;self.statusLabel.font=[UIFont systemFontOfSize:12 weight:UIFontWeightMedium];self.statusLabel.textColor=[UIColor colorWithWhite:.72 alpha:1];[self.view addSubview:self.statusLabel];
+ self.statusLabel=[UILabel new];self.statusLabel.numberOfLines=2;self.statusLabel.textAlignment=NSTextAlignmentCenter;self.statusLabel.font=MCCompactFont(13,UIFontWeightMedium);self.statusLabel.textColor=UIColor.whiteColor;self.statusLabel.alpha=0;[self.view addSubview:self.statusLabel];
  self.progress=[UIProgressView new];self.progress.progressTintColor=MCAccent();self.progress.hidden=YES;[self.view addSubview:self.progress];
  self.cancelExportButton=[self button:@"取消合成" action:@selector(cancelExport)];self.cancelExportButton.hidden=YES;
- self.mode=[[UISegmentedControl alloc]initWithItems:@[@"照片",@"视频"]];self.mode.selectedSegmentIndex=0;self.mode.selectedSegmentTintColor=MCAccent();[self.mode setTitleTextAttributes:@{NSForegroundColorAttributeName:UIColor.blackColor} forState:UIControlStateSelected];[self.mode addTarget:self action:@selector(modeChanged) forControlEvents:UIControlEventValueChanged];[self.view addSubview:self.mode];
- self.shutter=[self button:@"" action:@selector(capturePressed)];self.shutter.backgroundColor=UIColor.whiteColor;self.shutter.layer.borderColor=[UIColor colorWithWhite:1 alpha:.35].CGColor;self.shutter.layer.borderWidth=5;
- self.filesButton=[self button:@"待保存" action:@selector(showFiles)];self.switchButton=[self button:@"翻转" action:@selector(switchCamera)];self.editButton=[self button:@"水印 · 模板 · 调色" action:@selector(openEditor)];
+ self.captureDock=[[MCChromeView alloc] initWithFrame:CGRectZero];[self.view addSubview:self.captureDock];
+ self.mode=[[UISegmentedControl alloc]initWithItems:@[@"照片",@"视频"]];self.mode.selectedSegmentIndex=0;self.mode.selectedSegmentTintColor=MCAccent();self.mode.accessibilityIdentifier=@"camera.mode";[self.mode setTitleTextAttributes:@{NSForegroundColorAttributeName:UIColor.whiteColor,NSFontAttributeName:MCCompactFont(14,UIFontWeightSemibold)} forState:UIControlStateNormal];[self.mode setTitleTextAttributes:@{NSForegroundColorAttributeName:UIColor.blackColor} forState:UIControlStateSelected];[self.mode addTarget:self action:@selector(modeChanged) forControlEvents:UIControlEventValueChanged];[self.view addSubview:self.mode];
+ self.shutter=[[MCShutterButton alloc] initWithFrame:CGRectZero];[self.shutter addTarget:self action:@selector(capturePressed) forControlEvents:UIControlEventTouchUpInside];[self.view addSubview:self.shutter];
+ self.filesButton=[self button:@"作品" action:@selector(showFiles)];MCConfigureSymbol(self.filesButton,@"square.stack",17);self.filesButton.accessibilityIdentifier=@"camera.library";
+ self.switchButton=[self button:@"" action:@selector(switchCamera)];MCConfigureSymbol(self.switchButton,@"arrow.triangle.2.circlepath.camera",22);self.switchButton.accessibilityLabel=@"翻转摄像头";self.switchButton.accessibilityIdentifier=@"camera.flip";
+ self.editButton=[self button:@"水印工坊" action:@selector(openEditor)];MCConfigureSymbol(self.editButton,@"slider.horizontal.3",16);self.editButton.accessibilityIdentifier=@"camera.editor";
  self.filesButton.accessibilityLabel=@"待保存作品与失败重试";self.shutter.accessibilityLabel=@"拍照";self.stage.accessibilityLabel=@"相机取景，轻点对焦，双指变焦";
 }
 - (void)viewDidLayoutSubviews {
@@ -148,13 +157,14 @@ static NSString *MCID(void){return [NSString stringWithFormat:@"%013lld-%@",(lon
  #define BOX(r) CGRectMake((r).x,(r).y,(r).w,(r).h)
  [CATransaction begin];[CATransaction setDisableActions:YES];
  self.stage.frame=BOX(a.stage);self.preview.frame=self.stage.bounds;self.nativePreview.frame=self.stage.bounds;self.overlay.frame=self.stage.bounds;self.gridView.frame=self.stage.bounds;[self.gridView setNeedsDisplay];
+ self.captureDock.frame=w>h?CGRectMake(a.mode.x-4,0,w-a.mode.x+4,h):CGRectMake(0,a.mode.y-6,w,h-a.mode.y+6);
  self.mode.frame=BOX(a.mode);self.shutter.frame=BOX(a.shutter);self.filesButton.frame=BOX(a.files);self.switchButton.frame=BOX(a.flip);self.editButton.frame=BOX(a.edit);
  self.watermarkButton.frame=BOX(a.watermark);self.liveButton.frame=BOX(a.live);self.settingsButton.frame=BOX(a.settings);self.previewHint.frame=BOX(a.hint);self.titleLabel.hidden=YES;
  self.zoomLabel.frame=BOX(a.zoomLabel);self.zoomSlider.frame=BOX(a.zoomSlider);self.lensSelector.frame=BOX(a.lenses);
- self.statusLabel.frame=BOX(a.status);self.statusLabel.backgroundColor=[UIColor colorWithWhite:0 alpha:.38];self.statusLabel.layer.cornerRadius=7;self.statusLabel.clipsToBounds=YES;
+ self.statusLabel.frame=BOX(a.status);self.statusLabel.backgroundColor=[UIColor colorWithWhite:.06 alpha:UIAccessibilityIsReduceTransparencyEnabled()?1:.90];self.statusLabel.layer.cornerRadius=12;self.statusLabel.clipsToBounds=YES;
  self.shutter.layer.cornerRadius=a.shutter.w/2;self.recordLabel.frame=CGRectMake(0,80,a.stage.w,24);self.countdownLabel.frame=self.stage.bounds;
- self.progress.frame=CGRectMake(a.stage.x+12,a.stage.y+a.stage.h-3,MAX(1,a.stage.w-24),2);self.cancelExportButton.frame=CGRectMake(a.stage.x+a.stage.w-114,a.status.y-46,102,40);
- [self.editButton setTitle:w>h?@"水印 · 调色":@"水印 · 模板 · 调色" forState:UIControlStateNormal];self.editButton.titleLabel.font=[UIFont systemFontOfSize:12 weight:UIFontWeightMedium];
+ self.progress.frame=CGRectMake(a.stage.x+12,a.stage.y+a.stage.h-3,MAX(1,a.stage.w-24),2);self.cancelExportButton.frame=CGRectMake(a.stage.x+a.stage.w-114,a.status.y-50,102,44);
+ [self.view bringSubviewToFront:self.captureDock];
  for(UIView *v in @[self.mode,self.shutter,self.filesButton,self.switchButton,self.editButton,self.watermarkButton,self.liveButton,self.settingsButton,self.progress,self.cancelExportButton,self.statusLabel])[self.view bringSubviewToFront:v];
  [self.stage bringSubviewToFront:self.previewHint];[CATransaction commit];
  #undef BOX
@@ -168,7 +178,19 @@ static NSString *MCID(void){return [NSString stringWithFormat:@"%013lld-%@",(lon
  self.preview.renderingEnabled=NO;[self.preview reset];
  [super viewWillTransitionToSize:size withTransitionCoordinator:c];[c animateAlongsideTransition:^(id<UIViewControllerTransitionCoordinatorContext> context){[self.view setNeedsLayout];} completion:^(id<UIViewControllerTransitionCoordinatorContext> context){if(!self.busy&&!self.recording&&!self.photoCaptures.count){self.captureOrientation=[self orientation];dispatch_async(self.sessionQueue,^{[self applyConnections];});}}];
 }
-- (void)status:(NSString *)s {dispatch_async(dispatch_get_main_queue(),^{self.statusLabel.text=s;self.statusLabel.alpha=1;NSUInteger generation=++self.statusGeneration;dispatch_after(dispatch_time(DISPATCH_TIME_NOW,5*NSEC_PER_SEC),dispatch_get_main_queue(),^{if(generation==self.statusGeneration&&!self.busy&&!self.recording&&!self.captureBlockMessage.length)[UIView animateWithDuration:.2 animations:^{self.statusLabel.alpha=0;}];});});}
+- (void)status:(NSString *)text {
+ dispatch_async(dispatch_get_main_queue(),^{
+  [self.statusLabel.layer removeAllAnimations];self.statusLabel.text=text;self.statusLabel.alpha=1;
+  NSUInteger generation=++self.statusGeneration;
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,5*NSEC_PER_SEC),dispatch_get_main_queue(),^{
+   if(generation!=self.statusGeneration||self.busy||self.recording||self.captureBlockMessage.length)return;
+   [UIView animateWithDuration:UIAccessibilityIsReduceMotionEnabled()?0:.16 delay:0 options:UIViewAnimationOptionBeginFromCurrentState|UIViewAnimationOptionAllowUserInteraction|UIViewAnimationOptionCurveEaseOut animations:^{self.statusLabel.alpha=0;} completion:nil];
+  });
+ });
+}
+- (void)traitCollectionDidChange:(UITraitCollection *)previous {
+ [super traitCollectionDidChange:previous];self.statusLabel.font=MCCompactFont(13,UIFontWeightMedium);self.previewHint.font=MCCompactFont(11,UIFontWeightMedium);[self.view setNeedsLayout];
+}
 - (void)alert:(NSString *)title message:(NSString *)message {
  dispatch_async(dispatch_get_main_queue(),^{if(self.inBackground){[self status:message];return;}UIViewController *vc=self;while(vc.presentedViewController)vc=vc.presentedViewController;UIAlertController *a=[UIAlertController alertControllerWithTitle:title message:message preferredStyle:UIAlertControllerStyleAlert];[a addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleCancel handler:nil]];[vc presentViewController:a animated:YES completion:nil];});
 }
@@ -238,9 +260,9 @@ static NSString *MCID(void){return [NSString stringWithFormat:@"%013lld-%@",(lon
  dispatch_async(dispatch_get_main_queue(),^{[self refreshLiveUI];});
 }
 - (void)refreshLiveUI {
- BOOL on=[self.activeSettings[@"livePhotoEnabled"]boolValue];NSString *title=on?@"LIVE 开":@"LIVE 关";
- if(!self.liveSupported&&!self.wantsVideo&&self.configured)title=@"LIVE 不支持";
- [self.liveButton setTitle:title forState:UIControlStateNormal];[self.liveButton setTitleColor:on?UIColor.systemYellowColor:MCAccent() forState:UIControlStateNormal];
+ BOOL on=[self.activeSettings[@"livePhotoEnabled"]boolValue];
+ self.liveButton.selected=on;self.liveButton.accessibilityValue=(!self.liveSupported&&!self.wantsVideo&&self.configured)?@"当前镜头不支持":(on?@"开启":@"关闭");
+ MCConfigureSymbol(self.liveButton,on?@"livephoto":@"livephoto.slash",18);
  self.liveButton.enabled=self.configured&&!self.busy&&!self.recording&&!self.photoCaptures.count&&!self.wantsVideo;self.liveButton.alpha=self.liveButton.enabled?1:.4;
 }
 - (void)toggleLive {
@@ -289,7 +311,8 @@ static NSString *MCID(void){return [NSString stringWithFormat:@"%013lld-%@",(lon
 }
 - (void)focus:(UITapGestureRecognizer *)g {
  if(self.busy||self.recording||self.photoCaptures.count||!self.configured)return;CGPoint pt=[g locationInView:self.stage];CGPoint p=[self.nativePreview captureDevicePointOfInterestForPoint:pt];
- UIView *ring=[[UIView alloc]initWithFrame:CGRectMake(pt.x-25,pt.y-25,50,50)];ring.layer.borderColor=MCAccent().CGColor;ring.layer.borderWidth=1.3;ring.layer.cornerRadius=10;[self.stage addSubview:ring];[UIView animateWithDuration:.7 delay:.5 options:0 animations:^{ring.alpha=0;} completion:^(BOOL f){[ring removeFromSuperview];}];
+ [self.focusRing removeFromSuperview];UIView *ring=[[UIView alloc]initWithFrame:CGRectMake(pt.x-25,pt.y-25,50,50)];self.focusRing=ring;ring.userInteractionEnabled=NO;ring.layer.borderColor=MCAccent().CGColor;ring.layer.borderWidth=1.5;ring.layer.cornerRadius=10;[self.stage addSubview:ring];
+ dispatch_after(dispatch_time(DISPATCH_TIME_NOW,.45*NSEC_PER_SEC),dispatch_get_main_queue(),^{[UIView animateWithDuration:UIAccessibilityIsReduceMotionEnabled()?0:.16 delay:0 options:UIViewAnimationOptionAllowUserInteraction|UIViewAnimationOptionCurveEaseOut animations:^{ring.alpha=0;} completion:^(BOOL finished){[ring removeFromSuperview];}];});
  dispatch_async(self.sessionQueue,^{AVCaptureDevice *d=self.cameraInput.device;NSError *e=nil;if([d lockForConfiguration:&e]){if(d.focusPointOfInterestSupported&&[d isFocusModeSupported:AVCaptureFocusModeAutoFocus]){d.focusPointOfInterest=p;d.focusMode=AVCaptureFocusModeAutoFocus;}if(d.exposurePointOfInterestSupported&&[d isExposureModeSupported:AVCaptureExposureModeContinuousAutoExposure]){d.exposurePointOfInterest=p;d.exposureMode=AVCaptureExposureModeContinuousAutoExposure;}[d unlockForConfiguration];}});
 }
 - (void)showZoom:(CGFloat)zoom {
@@ -343,10 +366,10 @@ static NSString *MCID(void){return [NSString stringWithFormat:@"%013lld-%@",(lon
  self.preview.settings=self.activeSettings;self.preview.hidden=!gpu;
  // Keep the system preview connected underneath, including focus coordinate mapping.
  self.nativePreview.hidden=NO;
- self.previewHint.text=gpu?@"GPU 实时调色":(toned?@"流畅取景 · 调色在成片应用":@"系统流畅取景");
+ self.previewHint.text=toned&&!gpu?@"调色将在保存时应用":([self.activeSettings[@"watermarkEnabled"]boolValue]?@"水印已开启":@"原片拍摄");
 }
 - (void)refreshSettings {
- NSDictionary *old=self.activeSettings;self.activeSettings=[[WMEngine shared]snapshot];self.gridView.grid=[self.activeSettings[@"gridEnabled"]boolValue];[self.gridView setNeedsDisplay];[self.watermarkButton setTitle:[self.activeSettings[@"watermarkEnabled"]boolValue]?@"水印开":@"水印关" forState:UIControlStateNormal];[self invalidateOverlay];[self refreshLiveUI];[self updatePreviewRoute];
+ NSDictionary *old=self.activeSettings;self.activeSettings=[[WMEngine shared]snapshot];self.gridView.grid=[self.activeSettings[@"gridEnabled"]boolValue];[self.gridView setNeedsDisplay];self.watermarkButton.selected=[self.activeSettings[@"watermarkEnabled"]boolValue];self.watermarkButton.accessibilityValue=self.watermarkButton.selected?@"开启":@"关闭";[self invalidateOverlay];[self refreshLiveUI];[self updatePreviewRoute];
  if(!self.configured||self.editorShown)return;
  BOOL liveChanged=[old[@"livePhotoEnabled"]boolValue]!=[self.activeSettings[@"livePhotoEnabled"]boolValue];
  BOOL connectionsChanged=!old||[old[@"mirrorFront"]boolValue]!=[self.activeSettings[@"mirrorFront"]boolValue]||[old[@"exposureBias"]doubleValue]!=[self.activeSettings[@"exposureBias"]doubleValue];
@@ -376,7 +399,7 @@ static NSString *MCID(void){return [NSString stringWithFormat:@"%013lld-%@",(lon
 - (void)viewDidAppear:(BOOL)animated {[super viewDidAppear:animated];if(self.editorShown&&!self.presentedViewController){self.editorShown=NO;self.gpuFailed=NO;[self refreshSettings];[self updateControls];[self resumeCameraSession];}}
 - (void)updateControls {
  BOOL locked=self.busy||self.recording||self.photoCaptures.count>0;self.workQueue.captureBusy=locked||self.editorShown;self.zoomSlider.enabled=!locked&&self.configured;self.lensSelector.enabled=!locked&&self.configured;self.settingsButton.enabled=!locked;[self refreshLiveUI];if(!locked)[self refreshZoomUI];self.mode.enabled=!locked;self.switchButton.enabled=!locked&&self.configured;self.editButton.enabled=!locked;self.filesButton.enabled=!locked;self.watermarkButton.enabled=!locked;self.shutter.enabled=self.configured&&(!self.busy||self.recording)&&!self.inBackground&&!self.editorShown&&!self.applicationInactive;
- self.shutter.backgroundColor=self.wantsVideo?UIColor.systemRedColor:UIColor.whiteColor;[self.shutter setTitle:self.recording?@"■":@"" forState:UIControlStateNormal];[self.shutter setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];self.shutter.accessibilityLabel=self.recording?@"停止录像":(self.wantsVideo?@"开始录像":@"拍照");UIApplication.sharedApplication.idleTimerDisabled=self.busy||self.recording;[self queueChanged];
+ self.shutter.videoMode=self.wantsVideo;self.shutter.recording=self.recording;self.shutter.accessibilityLabel=self.recording?@"停止录像":(self.wantsVideo?@"开始录像":@"拍照");UIApplication.sharedApplication.idleTimerDisabled=self.busy||self.recording;[self queueChanged];
 }
 - (NSURL *)pendingDirectory {
  NSURL *u=[[WMEngine.shared documentsURL]URLByAppendingPathComponent:@"Pending" isDirectory:YES];[NSFileManager.defaultManager createDirectoryAtURL:u withIntermediateDirectories:YES attributes:nil error:nil];return u;
@@ -499,7 +522,7 @@ static NSString *MCID(void){return [NSString stringWithFormat:@"%013lld-%@",(lon
 }
 - (void)queueChanged {
  NSUInteger count=self.workQueue.pendingCount;
- [self.filesButton setTitle:count?[NSString stringWithFormat:@"待处理 %lu",(unsigned long)count]:@"待保存" forState:UIControlStateNormal];
+ [self.filesButton setTitle:count?[NSString stringWithFormat:@"%lu",(unsigned long)count]:@"作品" forState:UIControlStateNormal];self.filesButton.selected=count>0;
  self.filesButton.accessibilityValue=self.workQueue.summary;self.progress.hidden=!self.workQueue.processing;self.progress.progress=self.workQueue.progress;self.cancelExportButton.hidden=!self.workQueue.processing;
  [self.cancelExportButton setTitle:@"暂停合成" forState:UIControlStateNormal];
  if(!self.busy&&!self.recording){

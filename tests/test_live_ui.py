@@ -60,7 +60,9 @@ for name, ok in [
     ('Original Live pair retained when requested',
      'if(keep)' in save and 'if(live)[raw addResourceWithType:PHAssetResourceTypePairedVideo' in save),
     ('Controller delegates Photos saving to queue', 'performChanges:' not in camera and 'performChanges:' in save),
-    ('Settings deep route exists', 'opensSettings=settings' in camera and 'inSection:4' in editor),
+    ('Settings deep route exists', 'opensSettings=settings' in camera
+     and 'selectedSegmentIndex=self.opensSettings?3:0' in editor
+     and 'section==selected+1' in editor),
     ('EV reset persists', 'self.engine.settings[@"exposureBias"]=@0; [self commit:YES]' in editor),
     ('EV default belongs to capture settings', '@"exposureBias":@0' in engine and 'key:@"exposureBias"' in editor),
     ('EV ignores nonnumeric or nonfinite input',
