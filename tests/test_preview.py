@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Execute native pure-C geometry/zoom helpers on Linux; never claims iOS rendering FPS."""
-import json,pathlib,subprocess,tempfile,math,hashlib
+import json,pathlib,subprocess,tempfile,math,hashlib,os
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 checks=[];layouts=[]
 def check(n,v):
@@ -9,7 +9,7 @@ def check(n,v):
 def overlaps(a,b):return a[0]<b[0]+b[2]-.1 and b[0]<a[0]+a[2]-.1 and a[1]<b[1]+b[3]-.1 and b[1]<a[1]+a[3]-.1
 devices=[('mini',375,812,50,34),('standard',390,844,47,34),('pro',393,852,59,34),('large',430,932,59,34),('SE',375,667,20,0)]
 with tempfile.TemporaryDirectory() as d:
- exe=pathlib.Path(d)/'probe';subprocess.run(['clang','-O2','-I'+str(ROOT/'Sources'),str(ROOT/'tests/native_layout_probe.c'),'-lm','-o',str(exe)],check=True)
+ exe=pathlib.Path(d)/'probe';subprocess.run([os.environ.get('CC','cc'),'-O2','-I'+str(ROOT/'Sources'),str(ROOT/'tests/native_layout_probe.c'),'-lm','-o',str(exe)],check=True)
  for name,width,height,top,bottom in devices:
   for land in [False,True]:
    w,h=(height,width) if land else (width,height);t,b,l,r=(0,21,top,top) if land else (top,bottom,0,0)

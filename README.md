@@ -1,21 +1,19 @@
-# 印记相机 · MarkCam 1.2.0 测试版
+# 印记相机 · MarkCam 1.2.1 修复版
 
 原生 Objective-C iPhone 相机，重点是“先设计水印，之后每次拍摄自动应用”。
 
-**交付状态：1.2.0（build 5）已交叉编译并生成 IPA；这是按用户要求提前交付的异步合成测试包，完整回归尚未完成，未做新版真机验收。**
-最近一次校验在 `Live resource saved as pairedVideo` 断言处失败，后续联跑被取消。队列重构后的测试迁移尚未完成；不把编译成功或旧版检查结果当作本版功能已通过。完整状态见 [1.2.0 发布说明](docs/RELEASE-1.2.0.md)。
+本版修复 1.2.0 的拍摄/异步队列状态恢复问题：首次相册授权不再吞掉快门请求，从水印编辑器返回后恢复合成，内存/温度恢复后重新启用快门。另修复录像任务过早进入可处理状态、视频受残留 LIVE 设置限制，以及损坏恢复记录导致异常的问题。
+
+**验证边界：主机回归和交叉编译检查不代表真机拍照通过。** 本版未运行 iOS 模拟器或真机验收；具体复测步骤见 [1.2.1 修复说明](docs/HOTFIX-1.2.1.md)。
 
 <p align="center"><img src="Resources/AppIcon1024.png" width="160" alt="印记相机图标"></p>
 IPA 内仅有 Mach-O ad-hoc 签名，没有 Apple 开发/分发签名与设备描述文件，普通 iPhone 不能直接点开安装。请先用合法有效的签名方式重签。
 
 ## 下载文件
-在 [Releases → v1.2.0](https://github.com/1052666/MarkCam/releases/tag/v1.2.0) 下载 IPA、源码包及校验文件。二进制不放进 Git 历史，避免仓库膨胀。
-- `MarkCam-1.2.0-resign-required.ipa`：已交付的同一份需重签测试包。
-- `MarkCam-1.2.0-source.zip`：本次提交对应的公开源码。
-- `build-report.json`：版本、构建目标和 IPA SHA-256。
-- `test-status.json`：本版回归未完成状态，不伪造通过报告。
-- `package-integrity.json`：发布文件结构与一致性检查，不等于功能验收。
-- `docs/RELEASE-1.2.0.md` 与 `docs/DEVICE-TESTS.md`：新版优先复测项及历史验收清单。
+
+本次修复的 IPA、SHA-256 与构建/检查报告随 PR 一并交付，参见 [artifacts/1.2.1](artifacts/1.2.1)。IPA 需要合法重签才能在普通 iPhone 安装。
+
+[GitHub Actions](https://github.com/1052666/MarkCam/actions/workflows/build-ios.yml) 在代码推送后重新编译并检查 IPA，成功运行会上传包含源码包和验证报告的构建附件。历史版本仍可在 [Releases](https://github.com/1052666/MarkCam/releases) 下载。
 
 ## 1.2.0：异步合成与资源控制
 - 原片及恢复记录先落盘，系统拍摄结束后释放快门；合成/相册保存移入单任务队列，不在界面线程合成。
@@ -133,6 +131,7 @@ IPA 内仅有 Mach-O ad-hoc 签名，没有 Apple 开发/分发签名与设备�
 ```sh
 python3 scripts/build.py
 python3 scripts/validate.py
+python3 tests/test_capture_recovery.py
 python3 tests/test_photo_contract.py
 python3 tests/test_live_ui.py
 python3 tests/test_preview.py      # 主机执行同一C布局/倍率函数
@@ -143,11 +142,10 @@ python3 scripts/publish-local.py  # 生成源码压缩包和 SHA256SUMS
 可通过 `IOS_SDK` 指定SDK路径。脚本只清理本项目 `build/release/`，不清理其他项目。无需GitHub令牌编译。若未来用于正式商店发行，建议迁移官方Xcode/SDK并完成完整签名、隐私及真机测试。
 
 ## 检查结论的边界
-- 1.2.0 完整工程已真实交叉编译、链接并生成本次 IPA；没有因此确认真机功能、内存或连续拍摄表现。
-- 本版完整回归未完成。最后一次 `scripts/validate.py` 在 `Live resource saved as pairedVideo` 断言处失败，后续联跑被取消。测试迁移尚未完成，不把该失败概括为所有功能都没有问题。
-- 193项结构/二进制/源断言、506项主机C布局/倍率契约、20项实况/曝光契约及正反编译回归通过记录属于 **1.1.1 历史版本**，不代表1.2.0已经通过。
-- 未运行iOS模拟器或完成新版真机验收；Live相册播放、方向、水印、异步连续拍摄、恢复与实际峰值内存均待复测。
-- 无完整Clang analyzer分析通过记录。本次只追加包结构和上传文件一致性检查，结果见发布附件。
+- 新增拍摄恢复回归：执行实际 C 资源策略，并检查 Objective-C 生命周期、授权和落盘屏障接线。
+- 旧测试已迁移到 `MCProcessingQueue` 和 `MCPhotoRenderer`，不再错误地到控制器中寻找已经迁出的相册保存/合成实现。
+- 编译回归包含正确回调编译通过、故意恢复旧版回调拼写错误时编译失败的正反检查；另检查 IPA 中真实的 Objective-C 方法表和 arm64 Mach-O 结构。
+- 所有结果均不证明相机画质、Live Photo 播放、iOS 内存峰值或真机连续拍摄通过，仍需安装复测。
 
 ## 本地诊断
 1.0.1 在拍照请求被系统拒绝时显示错误并恢复快门状态；最近一次错误写入 `Documents/LastCaptureError.json`，可从文件 App 导出。该文件包含错误原因和时间，不上传服务器。请勿将带私人信息的日志直接提交到公开 Issue。
