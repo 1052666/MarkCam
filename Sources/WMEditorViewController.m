@@ -120,7 +120,8 @@ static NSString *WMEHex(UIColor *color) {
     self.table=[[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStyleInsetGrouped];
     self.table.backgroundColor=self.view.backgroundColor; self.table.delegate=self; self.table.dataSource=self;
     self.table.translatesAutoresizingMaskIntoConstraints=NO;self.table.accessibilityIdentifier=@"editor.table"; self.table.keyboardDismissMode=UIScrollViewKeyboardDismissModeOnDrag;
-    self.table.rowHeight=UITableViewAutomaticDimension; self.table.estimatedRowHeight=56;
+    self.table.contentInsetAdjustmentBehavior=UIScrollViewContentInsetAdjustmentNever;
+    self.table.sectionHeaderTopPadding=8;self.table.rowHeight=UITableViewAutomaticDimension; self.table.estimatedRowHeight=56;
     [self.view addSubview:self.table];
     self.header=[[UIView alloc] initWithFrame:CGRectZero]; self.header.translatesAutoresizingMaskIntoConstraints=NO;
     [self.view addSubview:self.header]; self.headerHeight=[self.header.heightAnchor constraintEqualToConstant:280];
@@ -164,9 +165,9 @@ static NSString *WMEHex(UIColor *color) {
     for (UIGestureRecognizer *gesture in gestures) { gesture.delegate=self; [self.canvas addGestureRecognizer:gesture]; }
     self.selectedID=[self layers].lastObject[@"id"]; [self rebuildInspector]; [self prepareBackground]; [self requestRender];
 }
-- (BOOL)isSectionVisible:(NSInteger)section {
+- (NSInteger)sourceSectionForVisibleSection:(NSInteger)section {
     NSInteger selected=self.sectionPicker.selectedSegmentIndex;
-    return selected==0 ? section<=1 : section==selected+1;
+    return selected==0 ? section : selected+1;
 }
 - (void)sectionChanged:(UISegmentedControl *)sender {
     [self flushContinuousChanges];self.menuIndexPath=nil;
@@ -216,11 +217,14 @@ static NSString *WMEHex(UIColor *color) {
 }
 - (void)layoutCanvas {
     CGFloat width=self.header.bounds.size.width; if (width<1) return;
+    BOOL settings=self.sectionPicker.selectedSegmentIndex==3;
+    BOOL largeText=UIContentSizeCategoryIsAccessibilityCategory(self.traitCollection.preferredContentSizeCategory);
+    self.canvas.hidden=settings;self.canvasHint.hidden=settings||largeText;
+    if(settings){if(self.headerHeight.constant!=0)self.headerHeight.constant=0;return;}
     [self updateReticle];
     CGFloat available=MAX(180,self.view.safeAreaLayoutGuide.layoutFrame.size.height);
-    CGFloat hintHeight=MAX(44,[self.canvasHint sizeThatFits:CGSizeMake(width-32,CGFLOAT_MAX)].height+4);
-    BOOL compactTools=self.sectionPicker.selectedSegmentIndex==3 || UIContentSizeCategoryIsAccessibilityCategory(self.traitCollection.preferredContentSizeCategory);
-    CGFloat maxHeight=MIN(compactTools?112:260,MAX(56,available*(compactTools?.27:.43)-hintHeight-64));
+    CGFloat hintHeight=largeText?0:MAX(44,[self.canvasHint sizeThatFits:CGSizeMake(width-32,CGFLOAT_MAX)].height+4);
+    CGFloat maxHeight=largeText?92:MIN(260,MAX(56,available*.43-hintHeight-64));
     CGSize size=self.preparedImage.size; CGFloat aspect=(size.height>0)?size.width/size.height:.75;
     CGFloat w=MIN(MAX(1,width-32),maxHeight*aspect); CGFloat h=w/MAX(.001,aspect);
     self.canvas.frame=CGRectMake((width-w)/2,8,w,h); self.photoView.frame=self.canvas.bounds; self.overlayView.frame=self.canvas.bounds;
@@ -360,9 +364,9 @@ static NSString *WMEHex(UIColor *color) {
 }
 
 #pragma mark - Table view
-- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return 5; }
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView { return self.sectionPicker.selectedSegmentIndex==0 ? 2 : 1; }
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
-    if (![self isSectionVisible:section]) return 0;
+    section=[self sourceSectionForVisibleSection:section];
     if (section==0) return [self layers].count+1;
     if (section==1) return MAX(1,self.inspectorRows.count);
     if (section==2) return self.toneRows.count;
@@ -370,22 +374,16 @@ static NSString *WMEHex(UIColor *color) {
     return self.settingRows.count;
 }
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-    if (![self isSectionVisible:section]) return nil;
+    section=[self sourceSectionForVisibleSection:section];
     return @[@"图层 · 点击选中",@"选中图层",@"基础调色",@"模板资料库",@"相机设置"][section];
 }
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
-    if (![self isSectionVisible:section]) return nil;
+    section=[self sourceSectionForVisibleSection:section];
     if (section==0) return @"列表底部的图层绘制在最上方。圆环标记中心位置，不会出现在照片中。";
     if (section==1) return @"锁定后不能移动或修改图层；先解锁再编辑。图片保存在本机，文字支持 {date} 和 {time}。";
     if (section==2) return @"仅调整照片底图，水印颜色保持不变。这里的“原图”是调色归零，不会移除水印。";
     if (section==3) return @"切换模板只替换水印图层，调色与相机设置不变。导出包含当前图层和内嵌图片，建议及时备份。";
     return @"调整后自动保存。实况照片需要镜头支持与麦克风授权；0.5× 仅在硬件支持时显示，2× 可能使用数码变焦。";
-}
-- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section {
-    return [self isSectionVisible:section] ? UITableViewAutomaticDimension : .01;
-}
-- (CGFloat)tableView:(UITableView *)tableView heightForFooterInSection:(NSInteger)section {
-    return [self isSectionVisible:section] ? UITableViewAutomaticDimension : .01;
 }
 - (NSDictionary *)rowAt:(NSIndexPath *)path {
     if (path.section==1) return path.row<(NSInteger)self.inspectorRows.count ? self.inspectorRows[path.row] : nil;
@@ -400,6 +398,8 @@ static NSString *WMEHex(UIColor *color) {
     return [NSString stringWithFormat:@"%.2f",value];
 }
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)path {
+    // Keep model section IDs in control tags while displaying only active sections.
+    path=[NSIndexPath indexPathForRow:path.row inSection:[self sourceSectionForVisibleSection:path.section]];
     // No reused control state; at most a screenful of lightweight visible cells.
     UITableViewCell *cell=[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil];
     cell.backgroundColor=[UIColor colorWithWhite:.105 alpha:1]; cell.tintColor=WMEMint();
@@ -481,12 +481,19 @@ static NSString *WMEHex(UIColor *color) {
     values[key]=@(toggle.on); [self commit:[key isEqual:@"locked"]];
 }
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)path {
-    self.menuIndexPath=path;[tableView deselectRowAtIndexPath:path animated:!UIAccessibilityIsReduceMotionEnabled()];
+    NSIndexPath *visiblePath=path;self.menuIndexPath=path;[tableView deselectRowAtIndexPath:path animated:!UIAccessibilityIsReduceMotionEnabled()];
+    path=[NSIndexPath indexPathForRow:path.row inSection:[self sourceSectionForVisibleSection:path.section]];
     if (path.section==0) {
         if (path.row==(NSInteger)[self layers].count) { [self showAddMenu]; return; }
         self.selectedID=[self layers][path.row][@"id"]; [self rebuildInspector]; [self.table reloadData]; [self updateReticle]; return;
     }
-    NSString *key=[self rowAt:path][@"key"];
+    NSDictionary *row=[self rowAt:path];NSString *key=row[@"key"];
+    // Give native switches the whole readable row as a touch target as well.
+    if([row[@"kind"] isEqual:@"toggle"]){
+        UISwitch *toggle=(UISwitch *)[tableView cellForRowAtIndexPath:visiblePath].accessoryView;
+        if([toggle isKindOfClass:UISwitch.class]&&toggle.enabled){[toggle setOn:!toggle.on animated:!UIAccessibilityIsReduceMotionEnabled()];[toggle sendActionsForControlEvents:UIControlEventValueChanged];}
+        return;
+    }
     if ([key isEqual:@"text"]) [self editText];
     else if ([key isEqual:@"color"]) [self editColor];
     else if ([key isEqual:@"font"]) [self chooseFont];
@@ -513,7 +520,7 @@ static NSString *WMEHex(UIColor *color) {
 }
 - (void)presentMenu:(UIAlertController *)menu {
     [menu addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
-    if(self.menuIndexPath && [self isSectionVisible:self.menuIndexPath.section]){
+    if(self.menuIndexPath && self.menuIndexPath.section<self.table.numberOfSections && self.menuIndexPath.row<[self.table numberOfRowsInSection:self.menuIndexPath.section]){
         menu.popoverPresentationController.sourceView=self.table;
         menu.popoverPresentationController.sourceRect=[self.table rectForRowAtIndexPath:self.menuIndexPath];
     }else menu.popoverPresentationController.barButtonItem=self.navigationItem.leftBarButtonItem;

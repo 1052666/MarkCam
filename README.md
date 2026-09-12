@@ -1,18 +1,18 @@
-# 印记相机 · MarkCam 1.2.1 测试版
+# 印记相机 · MarkCam 1.3.0 测试版
 
 原生 Objective-C iPhone 相机，支持持续保存的多层水印、调色、照片、录像和 Live Photo。
 
-**本版修复快门状态无法恢复，并改造连续拍照：每张照片独立处理，普通照片曝光结束后可以继续按快门，最多两张在途，共用六张待处理容量。**
+**重新整理原生相机与水印工坊：双环快门立即反馈，编辑工具分为图层、调色、模板、设置。普通照片曝光结束后可以继续按快门，最多两张在途，共用六张待处理容量。**
 
-设置新增“连拍优先（弱光细节可能减少）”，默认开启；关闭可恢复画质/速度平衡。照片尺寸保持不变，水印与调色继续在后台队列合成。具体修复、限制与真机复测步骤见 [1.2.1 发布说明](docs/RELEASE-1.2.1.md)。
+“连拍优先”默认开启，设置中说明弱光细节的取舍；关闭可恢复画质/速度平衡。编辑器拖动即时预览，结束操作时再保存，减少频繁写盘。改造采用 [Emil Kowalski 的设计技能](https://github.com/emilkowalski/skills)，详见 [1.3.0 发布说明](docs/RELEASE-1.3.0.md)。
 
 <p align="center"><img src="Resources/AppIcon1024.png" width="160" alt="印记相机图标"></p>
 
 ## 下载与验证
 
-在 [Releases → v1.2.1-rc.1](https://github.com/1052666/MarkCam/releases/tag/v1.2.1-rc.1) 下载需重签的 `MarkCam-1.2.1-resign-required.ipa`、对应源码与 SHA-256 清单。二进制通过 Release 上传，不放入 Git 历史。
+在 [Releases → v1.3.0-rc.1](https://github.com/1052666/MarkCam/releases/tag/v1.3.0-rc.1) 下载需重签的 `MarkCam-1.3.0-resign-required.ipa`、对应源码与 SHA-256 清单。二进制通过 Release 上传，不放入 Git 历史。
 
-GitHub Actions 对同一提交执行 macOS 回调运行测试、Linux iOS 交叉编译、C 门控/布局测试、正负回调编译回归和 IPA 完整性检查；结果见 [构建记录](https://github.com/1052666/MarkCam/actions) 及下载附件。**尚未完成 iPhone 真机验收，也未测量实际帧率、快门延迟或峰值内存。**
+GitHub Actions 对同一提交执行 macOS 回调运行测试、iOS Simulator UIKit 操作与截图检查、Linux iOS 交叉编译、C 门控/布局测试、正负回调编译回归和 IPA 完整性检查；结果见 [构建记录](https://github.com/1052666/MarkCam/actions) 及下载附件。**模拟器截图使用标注的取景样本；尚未完成 iPhone 真机验收，也未测量实际帧率、快门延迟或峰值内存。**
 
 IPA 仅有 Mach-O ad-hoc 签名，没有 Apple 开发/分发签名与设备描述文件，普通 iPhone 需先用有效签名方式重签。请备份模板和 Pending，使用原 Bundle ID 与签名身份覆盖安装。
 

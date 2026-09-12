@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.0 (7) — native camera and editor craft
+- Apply Emil Kowalski's design guidance to native UIKit: immediate double-ring shutter feedback, neutral chrome, consistent selected states and 44pt camera touch targets.
+- Divide the editor into Layers, Tone, Templates and Settings; route camera settings directly to its tab while retaining every original editing capability.
+- Keep continuous edits responsive by updating the preview immediately and persisting on completion, cancellation, tool changes, navigation and interruption. Persist discrete VoiceOver slider changes immediately.
+- Support Dynamic Type in forms, compact preview layout at accessibility sizes, opaque high-contrast/reduced-transparency chrome and reduced-motion custom feedback.
+- Add actual UIKit Simulator interaction and screenshot regression on standard and compact iPhones, including landscape, large text, settings routing and persistence behavior. The scene and shutter receiver are explicit fixtures; hardware performance and image quality remain unmeasured.
+- Include the shutter recovery, isolated per-photo delegates and bounded continuous capture improvements from 1.2.1.
+
 ## 1.2.1 (6) — capture recovery and responsive shooting test release
 - Refresh shutter admission even when rendering is paused or memory-constrained; release the editor's queue lock on return to the camera.
 - Retain a separate delegate and immutable settings per photo. Release the ordinary shutter after exposure; admit at most two in-flight photos within the six-job pending budget.

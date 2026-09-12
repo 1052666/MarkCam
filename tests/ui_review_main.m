@@ -7,15 +7,17 @@
 #import "WMEditorViewController.h"
 #import "WMEngine.h"
 #import "MCInterface.h"
+#import "MCProcessingQueue.h"
 
 @interface CameraViewController (ReviewAccess)
 - (void)updateControls;
 - (void)requestCamera;
 - (void)modeChanged;
 - (void)capturePressed;
+- (void)resumeCameraSession;
 @end
 @interface WMEditorViewController (ReviewAccess)
-- (BOOL)isSectionVisible:(NSInteger)section;
+- (NSInteger)sourceSectionForVisibleSection:(NSInteger)section;
 - (void)sliderChanged:(UISlider *)slider;
 - (void)flushContinuousChanges;
 @end
@@ -42,12 +44,31 @@ static UIImage *Fixture(void) {
     }];
 }
 
+// The simulator has no iPhone process-memory budget. Control that dependency
+// here; production admission itself is executed by the native C policy tests.
+@interface ReviewQueue : MCProcessingQueue
+@property(nonatomic,copy) NSString *reviewBlockReason;
+@end
+@implementation ReviewQueue
+- (NSString *)captureBlockReasonForLive:(BOOL)live reservedCount:(NSUInteger)reserved { return self.reviewBlockReason; }
+- (void)tick { }
+@end
+
 @interface ReviewCamera : CameraViewController
 @property(nonatomic) NSUInteger pressCount;
 @end
 @implementation ReviewCamera
-- (void)requestCamera { [self setValue:@YES forKey:@"configured"]; }
+- (void)requestCamera {
+    [(MCProcessingQueue *)[self valueForKey:@"workQueue"] setOnChange:nil];
+    [self setValue:[ReviewQueue new] forKey:@"workQueue"];
+    [self setValue:@YES forKey:@"configured"];
+}
 - (void)capturePressed { self.pressCount++; }
+- (void)resumeCameraSession {
+    // A sensorless Simulator cannot start a real capture session. Keep lifecycle
+    // readiness controlled while exercising the production UI state machine.
+    [self setValue:@NO forKey:@"busy"];[self setValue:@NO forKey:@"sessionRefreshPending"];[self updateControls];
+}
 - (void)modeChanged {
     BOOL video=[(UISegmentedControl *)[self valueForKey:@"mode"] selectedSegmentIndex]==1;
     [self setValue:@(video) forKey:@"wantsVideo"];
@@ -119,21 +140,39 @@ static UIImage *Fixture(void) {
         Check([NSString stringWithFormat:@"%@ %@ onscreen",name,key],CGRectContainsRect(CGRectInset(self.camera.view.bounds,-.1,-.1),rect));
     }
     UIButton *shutter=[self.camera valueForKey:@"shutter"];Check([name stringByAppendingString:@" shutter ready"],shutter.enabled);
+    if(!shutter.enabled) NSLog(@"UI readiness: busy=%@ configured=%@ inactive=%@ background=%@ editor=%@ block=%@",[self.camera valueForKey:@"busy"],[self.camera valueForKey:@"configured"],[self.camera valueForKey:@"applicationInactive"],[self.camera valueForKey:@"inBackground"],[self.camera valueForKey:@"editorShown"],[self.camera valueForKey:@"captureBlockMessage"]);
     NSUInteger initial=self.camera.pressCount;
     for(int i=0;i<100;i++){shutter.highlighted=YES;[shutter sendActionsForControlEvents:UIControlEventTouchUpInside];shutter.highlighted=NO;}
     Check([name stringByAppendingString:@" 100 immediate UIKit action deliveries"],self.camera.pressCount==initial+100);
     Check([name stringByAppendingString:@" shutter has no queued animations"],shutter.layer.animationKeys.count==0);
+    [self.camera setValue:@YES forKey:@"busy"];[self.camera updateControls];Check(@"Busy capture disables the shutter",!shutter.enabled);
+    [self.camera setValue:@NO forKey:@"busy"];[self.camera updateControls];Check(@"Capture completion restores the shutter",shutter.enabled);
+    ReviewQueue *queue=[self.camera valueForKey:@"workQueue"];queue.reviewBlockReason=@"模拟队列等待";[self.camera updateControls];Check(@"Queue backpressure disables the shutter",!shutter.enabled);
+    queue.reviewBlockReason=nil;[self.camera updateControls];Check(@"Queue recovery restores the shutter",shutter.enabled);
 }
 - (void)selectTab:(NSInteger)index {
     UISegmentedControl *picker=[self.editor valueForKey:@"sectionPicker"];picker.selectedSegmentIndex=index;[picker sendActionsForControlEvents:UIControlEventValueChanged];
 }
 - (void)checkEditorTab:(NSInteger)tab {
     UITableView *table=[self.editor valueForKey:@"table"];
-    for(NSInteger section=0;section<5;section++)Check([NSString stringWithFormat:@"Tab %ld section %ld visibility",(long)tab,(long)section],([table numberOfRowsInSection:section]>0)==(tab==0?section<=1:section==tab+1));
+    Check([NSString stringWithFormat:@"Tab %ld contains only relevant sections",(long)tab],table.numberOfSections==(tab==0?2:1));
+    for(NSInteger section=0;section<table.numberOfSections;section++){
+        Check(@"Visible section keeps its model identity",[self.editor sourceSectionForVisibleSection:section]==(tab==0?section:tab+1));
+        Check(@"Visible section contains rows",[table numberOfRowsInSection:section]>0);
+    }
+    CGRect first=[table rectForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]];
+    Check(@"First tool row starts near the picker",first.origin.y-table.contentOffset.y<90);
     Check([NSString stringWithFormat:@"Tab %ld leaves usable scroll area",(long)tab],table.bounds.size.height>120);
     UIView *picker=[self.editor valueForKey:@"sectionPicker"];Check(@"Editor picker has 44pt hit area",picker.bounds.size.height>=43.9);
 }
 - (void)testContinuousEdits {
+    UITableView *table=[self.editor valueForKey:@"table"];
+    UITableViewCell *cell=[table cellForRowAtIndexPath:[NSIndexPath indexPathForRow:1 inSection:0]];
+    NSMutableArray *views=[NSMutableArray arrayWithArray:cell.contentView.subviews];UISlider *visibleSlider=nil;
+    while(views.count){UIView *view=views.lastObject;[views removeLastObject];if([view isKindOfClass:UISlider.class]){visibleSlider=(UISlider *)view;break;}[views addObjectsFromArray:view.subviews];}
+    Check(@"Visible tone slider has value-change action",[[visibleSlider actionsForTarget:self.editor forControlEvent:UIControlEventValueChanged] containsObject:@"sliderChanged:"]);
+    for(NSNumber *event in @[@(UIControlEventTouchUpInside),@(UIControlEventTouchUpOutside),@(UIControlEventTouchCancel)])
+        Check(@"Visible tone slider persists on release or cancellation",[[visibleSlider actionsForTarget:self.editor forControlEvent:event.unsignedIntegerValue] containsObject:@"flushContinuousChanges"]);
     ReviewSlider *slider=[ReviewSlider new];slider.tag=2;slider.accessibilityIdentifier=@"brightness";slider.minimumValue=-.3;slider.maximumValue=.3;slider.handTracking=YES;
     NSUInteger initial=saveCount;
     for(int i=0;i<50;i++){slider.value=-.25+i*.01;[self.editor sliderChanged:slider];}

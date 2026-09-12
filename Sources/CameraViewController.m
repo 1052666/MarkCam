@@ -366,7 +366,7 @@ static NSString *MCID(void){return [NSString stringWithFormat:@"%013lld-%@",(lon
  self.preview.settings=self.activeSettings;self.preview.hidden=!gpu;
  // Keep the system preview connected underneath, including focus coordinate mapping.
  self.nativePreview.hidden=NO;
- self.previewHint.text=toned&&!gpu?@"调色将在保存时应用":([self.activeSettings[@"watermarkEnabled"]boolValue]?@"水印已开启":@"原片拍摄");
+ self.previewHint.text=@"调色将在保存时应用";self.previewHint.hidden=!toned||gpu;
 }
 - (void)refreshSettings {
  NSDictionary *old=self.activeSettings;self.activeSettings=[[WMEngine shared]snapshot];self.gridView.grid=[self.activeSettings[@"gridEnabled"]boolValue];[self.gridView setNeedsDisplay];self.watermarkButton.selected=[self.activeSettings[@"watermarkEnabled"]boolValue];self.watermarkButton.accessibilityValue=self.watermarkButton.selected?@"开启":@"关闭";[self invalidateOverlay];[self refreshLiveUI];[self updatePreviewRoute];
