@@ -18,7 +18,8 @@ jobs:
       - name: Install cross-build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang lld python3-pil
+          sudo apt-get install -y clang-18 lld-18 python3-pil
+          echo '/usr/lib/llvm-18/bin' >> "$GITHUB_PATH"
       - name: Prepare pinned iOS SDK
         env:
           SDK_COMMIT: 0222fd5413cf4b9af096f37b4621afa2688572f7
