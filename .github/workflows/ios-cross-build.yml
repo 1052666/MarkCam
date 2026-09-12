@@ -98,6 +98,11 @@ jobs:
       - name: Generate source archive and delivery checksums
         run: |
           python3 tests/render_layout_review.py
+          cp tests/layout-fixtures.json dist/layout-fixtures.json
+          cp docs/layout-review.html dist/layout-review.html
+          # These two tracked files are historical generated previews. Retain
+          # this run's output as artifacts, and archive the exact source commit.
+          git restore --source=HEAD -- tests/layout-fixtures.json docs/layout-review.html
           python3 scripts/publish-local.py
           cd dist
           sha256sum --check --strict SHA256SUMS.txt

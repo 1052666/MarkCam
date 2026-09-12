@@ -26,7 +26,7 @@ with zipfile.ZipFile(source,'w',zipfile.ZIP_DEFLATED,compresslevel=8) as z:
         entry.external_attr=0o100644<<16
         z.writestr(entry,data,compress_type=zipfile.ZIP_DEFLATED,compresslevel=8)
 # Publish this build and its reports, never an old IPA/source archive in dist.
-assets=sorted({ipa,source,*DIST.glob('*-report.json'),*DIST.glob('*-regression.json'),*DIST.glob('*-status.json'),*DIST.glob('*-integrity.json')})
+assets=sorted({ipa,source,*DIST.glob('*-report.json'),*DIST.glob('*-regression.json'),*DIST.glob('*-status.json'),*DIST.glob('*-integrity.json'),*DIST.glob('layout-fixtures.json'),*DIST.glob('layout-review.html')})
 manifest=[{'file':p.name,'bytes':p.stat().st_size,'sha256':hashlib.sha256(p.read_bytes()).hexdigest()} for p in assets]
 (DIST/'SHA256SUMS.txt').write_text(''.join(x['sha256']+'  '+x['file']+'\n' for x in manifest),encoding='utf-8')
 (DIST/'delivery-manifest.json').write_text(json.dumps(manifest,indent=2,ensure_ascii=False)+'\n',encoding='utf-8')
