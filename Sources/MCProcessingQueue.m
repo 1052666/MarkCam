@@ -9,10 +9,15 @@
 #include <limits.h>
 
 static NSError *QError(NSString *s){return [NSError errorWithDomain:@"MarkCam.Queue" code:1 userInfo:@{NSLocalizedDescriptionKey:s}];}
+static BOOL QValidJob(NSDictionary *job){
+ return [job isKindOfClass:NSDictionary.class]&&[@[@"photo",@"live",@"video"]containsObject:job[@"kind"]]&&[WMEngine isValidSettingsSnapshot:job[@"settings"]]&&[job[@"date"]isKindOfClass:NSNumber.class]&&isfinite([job[@"date"]doubleValue]);
+}
 @interface MCProcessingQueue ()
 @property(nonatomic,readwrite) BOOL processing;
 @property(nonatomic,readwrite) BOOL heavyProcessing;
 @property(nonatomic,readwrite) NSUInteger pendingCount;
+@property(nonatomic,readwrite) NSUInteger queuedCount;
+@property(nonatomic) BOOL storageLow;
 @property(nonatomic,readwrite,copy) NSString *summary;
 @property(nonatomic,strong,readwrite) NSURL *activeMeta;
 @property(nonatomic,strong) dispatch_queue_t io;
@@ -58,16 +63,18 @@ static NSError *QError(NSString *s){return [NSError errorWithDomain:@"MarkCam.Qu
 - (BOOL)isActive:(NSURL *)meta {return self.processing&&[self.activeMeta.path isEqual:meta.path];}
 - (void)setForeground:(BOOL)value {_foreground=value;if(!value){self.stopRequested=YES;[self.live cancel];[self.video cancelExport];}else{[self resumeAfterPhotoAuthorization];[self refresh];}[self notify];}
 - (void)setCaptureBusy:(BOOL)value {BOOL changed=_captureBusy!=value;_captureBusy=value;if(changed&&!value)self.lastShot=CACurrentMediaTime();}
-- (void)didCapture {self.pendingCount++;self.scanRevision++;self.lastShot=CACurrentMediaTime();[self refresh];[self notify];}
+- (void)didCapture {self.pendingCount++;self.queuedCount++;self.scanRevision++;self.lastShot=CACurrentMediaTime();[self refresh];[self notify];}
 - (BOOL)allowsCaptureLive:(BOOL)live {
  return [self allowsCaptureLive:live reservedCount:0];
 }
 - (BOOL)allowsCaptureLive:(BOOL)live reservedCount:(NSUInteger)reserved {
  return [self captureBlockReasonForLive:live reservedCount:reserved]==nil;
 }
+- (uint64_t)availableCaptureMemory {return os_proc_available_memory();}
 - (NSString *)captureBlockReasonForLive:(BOOL)live reservedCount:(NSUInteger)reserved {
+ if(self.storageLow)return @"存储空间不足，请先导出或清理作品";
  BOOL pressure=CACurrentMediaTime()<self.pressureUntil||NSProcessInfo.processInfo.thermalState>=NSProcessInfoThermalStateSerious;
- MCCaptureAdmissionResult result=MCCaptureAdmission((unsigned)MIN(self.pendingCount,(NSUInteger)UINT_MAX),(unsigned)MIN(reserved,(NSUInteger)UINT_MAX),live,pressure,self.heavyProcessing,self.processing,os_proc_available_memory());
+ MCCaptureAdmissionResult result=MCCaptureAdmission((unsigned)MIN(self.queuedCount,(NSUInteger)UINT_MAX),(unsigned)MIN(reserved,(NSUInteger)UINT_MAX),live,pressure,self.heavyProcessing,self.processing,[self availableCaptureMemory]);
  switch(result){
   case MCAdmissionAllowed:return nil;
   case MCAdmissionHeavyProcessing:return @"正在合成实况或视频，完成后可继续拍摄";
@@ -85,9 +92,18 @@ static NSError *QError(NSString *s){return [NSError errorWithDomain:@"MarkCam.Qu
  if(self.scanning){self.scanRevision++;return;}self.scanning=YES;NSUInteger revision=self.scanRevision;
  dispatch_async(self.io,^{@autoreleasepool{
   NSArray *files=[NSFileManager.defaultManager contentsOfDirectoryAtURL:self.class.directory includingPropertiesForKeys:nil options:0 error:nil];NSMutableArray *jobs=[NSMutableArray new];
-  for(NSURL *url in files)if([url.lastPathComponent hasSuffix:@".job.json"])[jobs addObject:url];
+  NSNumber *capacity=nil;[self.class.directory getResourceValue:&capacity forKey:NSURLVolumeAvailableCapacityForImportantUsageKey error:nil];
+  BOOL low=capacity&&capacity.unsignedLongLongValue<256ULL*1024*1024;
+  NSUInteger queued=0;
+  for(NSURL *url in files)if([url.lastPathComponent hasSuffix:@".job.json"]){@autoreleasepool{
+   [jobs addObject:url];NSDictionary *job=[self readJob:url];
+   // A killed process cannot finish its old capture or Photos transaction.
+   // Keep those files for explicit recovery; never reset "saving" to "ready"
+   // automatically (Photos may already have committed the asset).
+   if(QValidJob(job)&&!job[@"queueBlocked"]&&([job[@"stage"]isEqual:@"raw"]||[job[@"stage"]isEqual:@"ready"]))queued++;
+  }}
   [jobs sortUsingComparator:^NSComparisonResult(NSURL *a,NSURL *b){return [a.lastPathComponent compare:b.lastPathComponent];}];
-  dispatch_async(dispatch_get_main_queue(),^{self.scanning=NO;if(revision!=self.scanRevision){[self refresh];return;}self.jobs=jobs;self.pendingCount=jobs.count;[self notify];});
+  dispatch_async(dispatch_get_main_queue(),^{self.scanning=NO;if(revision!=self.scanRevision){[self refresh];return;}self.jobs=jobs;self.pendingCount=jobs.count;self.queuedCount=queued;self.storageLow=low;[self notify];});
  }});
 }
 - (void)retry:(NSURL *)meta {
@@ -135,8 +151,8 @@ static NSError *QError(NSString *s){return [NSError errorWithDomain:@"MarkCam.Qu
  if(!next){if(self.pendingCount&&!self.manuallyPaused)self.summary=@"有失败/未完整作品，请在待保存查看";[self notify];return;}
  self.processing=YES;[self beginLease];self.activeMeta=next;self.stopRequested=NO;self.summary=@"异步合成中，可继续拍普通照片";[self notify];
  dispatch_async(self.io,^{@autoreleasepool{
-  NSMutableDictionary *job=[self readJob:next];NSString *kind=job[@"kind"],*stage=job[@"stage"];
-  BOOL valid=[@[@"photo",@"live",@"video"]containsObject:kind]&&[WMEngine isValidSettingsSnapshot:job[@"settings"]]&&[job[@"date"]isKindOfClass:NSNumber.class]&&isfinite([job[@"date"]doubleValue]);
+  NSMutableDictionary *job=[self readJob:next];NSString *stage=job[@"stage"];
+  BOOL valid=QValidJob(job);
   if(!valid||job[@"queueBlocked"]||![@[@"raw",@"ready",@"saved"]containsObject:stage]){dispatch_async(dispatch_get_main_queue(),^{[self.blocked addObject:next.path];[self finish:QError(@"恢复信息不完整或已暂停，请在待保存查看") job:job meta:next block:YES];});return;}
   if([stage isEqual:@"saved"]){[self.class cleanupJob:job meta:next];dispatch_async(dispatch_get_main_queue(),^{[self finish:nil job:nil meta:next block:NO];});return;}
   dispatch_async(dispatch_get_main_queue(),^{[self beginJob:job meta:next];});

@@ -1,11 +1,9 @@
 #import "MCInterface.h"
 #import <QuartzCore/QuartzCore.h>
 
-UIColor *MCInterfaceAccent(void) { return [UIColor colorWithRed:.55 green:.94 blue:.80 alpha:1]; }
-UIColor *MCInterfaceBackground(void) { return [UIColor colorWithWhite:.045 alpha:1]; }
+UIColor *MCInterfaceAccent(void) { return UIColor.systemYellowColor; }
+UIColor *MCInterfaceBackground(void) { return UIColor.blackColor; }
 UIFont *MCCompactFont(CGFloat size, UIFontWeight weight) {
-    // Camera controls keep a fixed, reachable footprint; full Dynamic Type is
-    // available in the editor. VoiceOver provides every compact control's name.
     return [[UIFontMetrics metricsForTextStyle:UIFontTextStyleSubheadline]
         scaledFontForFont:[UIFont systemFontOfSize:size weight:weight] maximumPointSize:size+3];
 }
@@ -13,44 +11,61 @@ void MCConfigureSymbol(UIButton *button, NSString *symbol, CGFloat size) {
     UIImageSymbolConfiguration *config=[UIImageSymbolConfiguration configurationWithPointSize:size weight:UIImageSymbolWeightMedium];
     [button setImage:[UIImage systemImageNamed:symbol withConfiguration:config] forState:UIControlStateNormal];
     button.imageView.contentMode=UIViewContentModeScaleAspectFit;
-    if (button.currentTitle.length) {
-        button.imageEdgeInsets=UIEdgeInsetsMake(0,-3,0,3);
-        button.titleEdgeInsets=UIEdgeInsetsMake(0,3,0,-3);
-    }
 }
 
+@interface MCToolButton ()
+@property(nonatomic,strong) UIVisualEffectView *fallbackMaterial;
+@end
 @implementation MCToolButton
 - (instancetype)initWithFrame:(CGRect)frame {
     if ((self=[super initWithFrame:frame])) {
-        self.layer.cornerRadius=14; self.layer.cornerCurve=kCACornerCurveContinuous;
-        self.titleLabel.font=MCCompactFont(13,UIFontWeightSemibold);
-        self.titleLabel.adjustsFontSizeToFitWidth=YES; self.titleLabel.minimumScaleFactor=.85;
-        self.contentEdgeInsets=UIEdgeInsetsMake(0,8,0,8);
-        self.adjustsImageWhenHighlighted=NO;
-        [self setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];
-        [self setTitleColor:MCInterfaceAccent() forState:UIControlStateSelected];
-        [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(refreshAppearance)
+        // UIKit owns the optical material and its touch response. The shutter
+        // remains a separate immediate control with no decorative animation.
+        self.overrideUserInterfaceStyle=UIUserInterfaceStyleDark;
+        self.tintColor=MCInterfaceAccent();
+        if (@available(iOS 26.0,*)) {
+            self.configuration=[UIButtonConfiguration glassButtonConfiguration];
+        } else {
+            self.configuration=[UIButtonConfiguration plainButtonConfiguration];
+            self.fallbackMaterial=[[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemThinMaterialDark]];
+            self.fallbackMaterial.userInteractionEnabled=NO;
+            [self insertSubview:self.fallbackMaterial atIndex:0];
+        }
+        self.titleLabel.adjustsFontSizeToFitWidth=YES;self.titleLabel.minimumScaleFactor=.85;
+        [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(setNeedsUpdateConfiguration)
             name:UIAccessibilityReduceTransparencyStatusDidChangeNotification object:nil];
-        [self refreshAppearance];
+        [self setNeedsUpdateConfiguration];
     } return self;
 }
-- (void)setHighlighted:(BOOL)highlighted { [super setHighlighted:highlighted]; [self refreshAppearance]; }
-- (void)setSelected:(BOOL)selected { [super setSelected:selected]; [self refreshAppearance]; }
-- (void)setEnabled:(BOOL)enabled { [super setEnabled:enabled]; [self refreshAppearance]; }
-- (void)traitCollectionDidChange:(UITraitCollection *)previous {
-    [super traitCollectionDidChange:previous]; self.titleLabel.font=MCCompactFont(13,UIFontWeightSemibold); [self refreshAppearance];
+- (void)updateConfiguration {
+    [super updateConfiguration];
+    UIButtonConfiguration *configuration=self.configuration;
+    configuration.cornerStyle=UIButtonConfigurationCornerStyleCapsule;
+    configuration.contentInsets=NSDirectionalEdgeInsetsMake(8,12,8,12);
+    configuration.imagePadding=6;
+    configuration.baseForegroundColor=self.selected ? MCInterfaceAccent() : UIColor.whiteColor;
+    configuration.titleTextAttributesTransformer=^NSDictionary *(NSDictionary *incoming){
+        NSMutableDictionary *attributes=[incoming mutableCopy];
+        attributes[NSFontAttributeName]=MCCompactFont(14,UIFontWeightSemibold);return attributes;
+    };
+    self.configuration=configuration;
+    if(self.fallbackMaterial){
+        BOOL solid=UIAccessibilityIsReduceTransparencyEnabled()||self.traitCollection.accessibilityContrast==UIAccessibilityContrastHigh;
+        self.fallbackMaterial.hidden=solid;
+        self.backgroundColor=solid?[UIColor colorWithWhite:.16 alpha:1]:UIColor.clearColor;
+        self.fallbackMaterial.contentView.backgroundColor=self.highlighted?[UIColor colorWithWhite:1 alpha:.16]:UIColor.clearColor;
+    }
 }
-- (void)refreshAppearance {
-    // A tap is acknowledged on touch-down, and committed by UIKit on touch-up.
-    // No spring/scale animation can delay a second tap or accumulate on bursts.
-    BOOL solid=UIAccessibilityIsReduceTransparencyEnabled() || self.traitCollection.accessibilityContrast==UIAccessibilityContrastHigh;
-    self.backgroundColor=self.highlighted ? [UIColor colorWithWhite:.30 alpha:1] :
-        (self.selected ? [UIColor colorWithRed:.16 green:.25 blue:.22 alpha:solid?1:.94] :
-        (solid ? [UIColor colorWithWhite:.14 alpha:1] : [UIColor colorWithWhite:.08 alpha:.82]));
-    self.tintColor=self.selected ? MCInterfaceAccent() : UIColor.whiteColor;
-    self.alpha=self.enabled ? 1 : .42;
-    self.layer.borderWidth=self.selected || self.traitCollection.accessibilityContrast==UIAccessibilityContrastHigh ? 1 : 0;
-    self.layer.borderColor=[(self.selected?MCInterfaceAccent():UIColor.whiteColor) colorWithAlphaComponent:.55].CGColor;
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    if(self.fallbackMaterial){
+        self.fallbackMaterial.frame=self.bounds;
+        self.fallbackMaterial.layer.cornerRadius=MIN(self.bounds.size.width,self.bounds.size.height)/2;
+        self.fallbackMaterial.clipsToBounds=YES;self.layer.cornerRadius=self.fallbackMaterial.layer.cornerRadius;
+    }
+}
+- (void)traitCollectionDidChange:(UITraitCollection *)previous {
+    [super traitCollectionDidChange:previous];[self setNeedsUpdateConfiguration];
 }
 - (void)dealloc { [NSNotificationCenter.defaultCenter removeObserver:self]; }
 @end
@@ -80,33 +95,19 @@ void MCConfigureSymbol(UIButton *button, NSString *symbol, CGFloat size) {
     CGFloat inset=self.recording ? self.bounds.size.width*.31 : (self.highlighted ? 11 : 8);
     CGRect core=CGRectInset(self.bounds,inset,inset);
     self.coreLayer.path=(self.recording ? [UIBezierPath bezierPathWithRoundedRect:core cornerRadius:5] : [UIBezierPath bezierPathWithOvalInRect:core]).CGPath;
-    self.coreLayer.fillColor=(self.videoMode?UIColor.systemRedColor:(self.highlighted?MCInterfaceAccent():UIColor.whiteColor)).CGColor;
+    self.coreLayer.fillColor=(self.videoMode?UIColor.systemRedColor:(self.highlighted?[UIColor colorWithWhite:.8 alpha:1]:UIColor.whiteColor)).CGColor;
     [CATransaction commit];
 }
 @end
 
-@interface MCChromeView ()
-@property(nonatomic,strong) UIVisualEffectView *material;
-@end
-@implementation MCChromeView
+@implementation MCCameraScrimView
++ (Class)layerClass { return CAGradientLayer.class; }
 - (instancetype)initWithFrame:(CGRect)frame {
-    if ((self=[super initWithFrame:frame])) {
+    if((self=[super initWithFrame:frame])){
         self.userInteractionEnabled=NO;
-        self.material=[[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemThinMaterialDark]];
-        self.material.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;
-        [self addSubview:self.material];
-        self.layer.cornerRadius=28; self.layer.cornerCurve=kCACornerCurveContinuous;
-        self.layer.maskedCorners=kCALayerMinXMinYCorner|kCALayerMaxXMinYCorner; self.clipsToBounds=YES;
-        [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(refreshAppearance)
-            name:UIAccessibilityReduceTransparencyStatusDidChangeNotification object:nil];
-        [self refreshAppearance];
-    } return self;
+        CAGradientLayer *gradient=(CAGradientLayer *)self.layer;
+        gradient.colors=@[(id)UIColor.clearColor.CGColor,(id)[UIColor colorWithWhite:0 alpha:.72].CGColor,(id)UIColor.blackColor.CGColor];
+        gradient.locations=@[@0,@.45,@1];
+    }return self;
 }
-- (void)layoutSubviews { [super layoutSubviews]; self.material.frame=self.bounds; }
-- (void)traitCollectionDidChange:(UITraitCollection *)previous { [super traitCollectionDidChange:previous]; [self refreshAppearance]; }
-- (void)refreshAppearance {
-    BOOL solid=UIAccessibilityIsReduceTransparencyEnabled() || self.traitCollection.accessibilityContrast==UIAccessibilityContrastHigh;
-    self.material.hidden=solid; self.backgroundColor=solid ? MCInterfaceBackground() : [UIColor colorWithWhite:.02 alpha:.50];
-}
-- (void)dealloc { [NSNotificationCenter.defaultCenter removeObserver:self]; }
 @end

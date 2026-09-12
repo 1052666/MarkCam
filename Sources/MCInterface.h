@@ -16,8 +16,8 @@ void MCConfigureSymbol(UIButton *button, NSString *symbol, CGFloat size);
 @property(nonatomic) BOOL recording;
 @end
 
-@interface MCChromeView : UIView
-- (void)refreshAppearance;
+/// Contrast over video; no material is stacked behind the glass controls.
+@interface MCCameraScrimView : UIView
 @end
 
 NS_ASSUME_NONNULL_END

@@ -7,6 +7,9 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic,readonly) BOOL processing;
 @property(nonatomic,readonly) BOOL heavyProcessing;
 @property(nonatomic,readonly) NSUInteger pendingCount;
+/// Runnable disk jobs only. Interrupted/failed recovery entries never occupy
+/// the transient capture budget, but remain visible in pendingCount.
+@property(nonatomic,readonly) NSUInteger queuedCount;
 @property(nonatomic,readonly) float progress;
 @property(nonatomic,copy,readonly) NSString *summary;
 @property(nonatomic,strong,readonly,nullable) NSURL *activeMeta;

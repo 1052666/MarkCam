@@ -8,7 +8,7 @@
 #import <QuartzCore/QuartzCore.h>
 #import <math.h>
 
-static UIColor *WMEMint(void) { return MCInterfaceAccent(); }
+static UIColor *WMEAccent(void) { return UIColor.systemBlueColor; }
 static CGFloat WMEClamp(CGFloat n, CGFloat low, CGFloat high) { return isfinite(n) ? MAX(low, MIN(high, n)) : low; }
 static const NSUInteger WMEMaxImageBytes = 20 * 1024 * 1024;
 static const NSUInteger WMEMaxBackupBytes = 32 * 1024 * 1024;
@@ -38,8 +38,8 @@ static NSString *WMEHex(UIColor *color) {
 @end
 @implementation WMETextEntryController
 - (void)viewDidLoad {
-    [super viewDidLoad]; self.title = @"水印文字"; self.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
-    self.view.backgroundColor = UIColor.systemBackgroundColor; self.view.tintColor = WMEMint();
+    [super viewDidLoad]; self.title = @"水印文字"; self.overrideUserInterfaceStyle = UIUserInterfaceStyleUnspecified;
+    self.view.backgroundColor = UIColor.systemBackgroundColor; self.view.tintColor = WMEAccent();
     self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"取消" style:UIBarButtonItemStylePlain target:self action:@selector(cancel)];
     self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"保存" style:UIBarButtonItemStyleDone target:self action:@selector(done)];
     self.textView = [[UITextView alloc] init]; self.textView.text = self.initialText ?: @"";
@@ -109,8 +109,8 @@ static NSString *WMEHex(UIColor *color) {
 
 @implementation WMEditorViewController
 - (void)viewDidLoad {
-    [super viewDidLoad]; self.title=@"水印工坊"; self.overrideUserInterfaceStyle=UIUserInterfaceStyleDark;
-    self.view.backgroundColor=MCInterfaceBackground(); self.view.tintColor=WMEMint();
+    [super viewDidLoad]; self.title=@"水印工坊"; self.overrideUserInterfaceStyle=UIUserInterfaceStyleUnspecified;
+    self.view.backgroundColor=UIColor.systemGroupedBackgroundColor; self.view.tintColor=WMEAccent();
     self.engine=[WMEngine shared];
     self.renderQueue=dispatch_queue_create("app.markcam.editor.preview",DISPATCH_QUEUE_SERIAL);
     self.importQueue=dispatch_queue_create("app.markcam.editor.import",DISPATCH_QUEUE_SERIAL);
@@ -121,31 +121,31 @@ static NSString *WMEHex(UIColor *color) {
     self.table.backgroundColor=self.view.backgroundColor; self.table.delegate=self; self.table.dataSource=self;
     self.table.translatesAutoresizingMaskIntoConstraints=NO;self.table.accessibilityIdentifier=@"editor.table"; self.table.keyboardDismissMode=UIScrollViewKeyboardDismissModeOnDrag;
     self.table.contentInsetAdjustmentBehavior=UIScrollViewContentInsetAdjustmentNever;
-    self.table.sectionHeaderTopPadding=8;self.table.rowHeight=UITableViewAutomaticDimension; self.table.estimatedRowHeight=56;
+    self.table.sectionHeaderTopPadding=8;self.table.contentInset=UIEdgeInsetsMake(0,0,12,0);self.table.rowHeight=UITableViewAutomaticDimension; self.table.estimatedRowHeight=56;
     [self.view addSubview:self.table];
     self.header=[[UIView alloc] initWithFrame:CGRectZero]; self.header.translatesAutoresizingMaskIntoConstraints=NO;
     [self.view addSubview:self.header]; self.headerHeight=[self.header.heightAnchor constraintEqualToConstant:280];
     self.sectionPicker=[[UISegmentedControl alloc] initWithItems:@[@"图层",@"调色",@"模板",@"设置"]];
     self.sectionPicker.translatesAutoresizingMaskIntoConstraints=NO;self.sectionPicker.selectedSegmentIndex=self.opensSettings?3:0;self.opensSettings=NO;
     self.sectionPicker.accessibilityLabel=@"水印工坊工具";self.sectionPicker.accessibilityIdentifier=@"editor.sections";
-    self.sectionPicker.selectedSegmentTintColor=WMEMint();
-    [self.sectionPicker setTitleTextAttributes:@{NSForegroundColorAttributeName:UIColor.whiteColor,NSFontAttributeName:MCCompactFont(14,UIFontWeightSemibold)} forState:UIControlStateNormal];
-    [self.sectionPicker setTitleTextAttributes:@{NSForegroundColorAttributeName:UIColor.blackColor} forState:UIControlStateSelected];
+
+    [self.sectionPicker setTitleTextAttributes:@{NSForegroundColorAttributeName:UIColor.labelColor,NSFontAttributeName:MCCompactFont(14,UIFontWeightSemibold)} forState:UIControlStateNormal];
+
     [self.sectionPicker addTarget:self action:@selector(sectionChanged:) forControlEvents:UIControlEventValueChanged];
     [self.view addSubview:self.sectionPicker];
-    UINavigationBarAppearance *bar=[[UINavigationBarAppearance alloc] init];[bar configureWithOpaqueBackground];bar.backgroundColor=MCInterfaceBackground();bar.shadowColor=UIColor.clearColor;
-    self.navigationItem.standardAppearance=bar;self.navigationItem.scrollEdgeAppearance=bar;
+    // Default navigation chrome adopts Liquid Glass when linked with the iOS 26 SDK.
+    // Do not paint an opaque appearance over the system material.
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(flushContinuousChanges) name:UIApplicationWillResignActiveNotification object:nil];
     [NSLayoutConstraint activateConstraints:@[
         [self.header.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
         [self.header.leadingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.leadingAnchor],
         [self.header.trailingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.trailingAnchor], self.headerHeight,
-        [self.sectionPicker.topAnchor constraintEqualToAnchor:self.header.bottomAnchor constant:4],
+        [self.sectionPicker.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor constant:-8],
         [self.sectionPicker.leadingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.leadingAnchor constant:16],
         [self.sectionPicker.trailingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.trailingAnchor constant:-16],
         [self.sectionPicker.heightAnchor constraintEqualToConstant:44],
-        [self.table.topAnchor constraintEqualToAnchor:self.sectionPicker.bottomAnchor constant:4],
-        [self.table.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor],
+        [self.table.topAnchor constraintEqualToAnchor:self.header.bottomAnchor constant:4],
+        [self.table.bottomAnchor constraintEqualToAnchor:self.sectionPicker.topAnchor constant:-12],
         [self.table.leadingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.leadingAnchor],
         [self.table.trailingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.trailingAnchor]]];
     self.canvas=[[UIView alloc] init]; self.canvas.backgroundColor=UIColor.blackColor; self.canvas.layer.cornerRadius=18;self.canvas.layer.cornerCurve=kCACornerCurveContinuous; self.canvas.clipsToBounds=YES;
@@ -154,8 +154,8 @@ static NSString *WMEHex(UIColor *color) {
     self.photoView.contentMode=UIViewContentModeScaleToFill; self.overlayView.contentMode=UIViewContentModeScaleToFill;
     [self.canvas addSubview:self.photoView]; [self.canvas addSubview:self.overlayView];
     self.reticle=[[UIView alloc] initWithFrame:CGRectMake(0,0,28,28)]; self.reticle.layer.cornerRadius=14;
-    self.reticle.layer.borderWidth=1.5; self.reticle.layer.borderColor=WMEMint().CGColor; self.reticle.userInteractionEnabled=NO;
-    self.reticle.backgroundColor=[WMEMint() colorWithAlphaComponent:.12]; [self.canvas addSubview:self.reticle];
+    self.reticle.layer.borderWidth=1.5; self.reticle.layer.borderColor=WMEAccent().CGColor; self.reticle.userInteractionEnabled=NO;
+    self.reticle.backgroundColor=[WMEAccent() colorWithAlphaComponent:.12]; [self.canvas addSubview:self.reticle];
     self.canvasHint=[[UILabel alloc] init]; self.canvasHint.font=[UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];
     self.canvasHint.adjustsFontForContentSizeCategory=YES;self.canvasHint.textColor=UIColor.secondaryLabelColor; self.canvasHint.textAlignment=NSTextAlignmentCenter; self.canvasHint.numberOfLines=0;
     [self.header addSubview:self.canvas]; [self.header addSubview:self.canvasHint];
@@ -178,6 +178,7 @@ static NSString *WMEHex(UIColor *color) {
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];self.navigationItem.leftBarButtonItem.enabled=self.sectionPicker.selectedSegmentIndex==0;
 }
+- (UIStatusBarStyle)preferredStatusBarStyle { return UIStatusBarStyleDefault; }
 - (void)viewWillDisappear:(BOOL)animated { [self flushContinuousChanges];[super viewWillDisappear:animated]; }
 - (void)traitCollectionDidChange:(UITraitCollection *)previous {
     [super traitCollectionDidChange:previous];[self.view setNeedsLayout];
@@ -224,7 +225,7 @@ static NSString *WMEHex(UIColor *color) {
     [self updateReticle];
     CGFloat available=MAX(180,self.view.safeAreaLayoutGuide.layoutFrame.size.height);
     CGFloat hintHeight=largeText?0:MAX(44,[self.canvasHint sizeThatFits:CGSizeMake(width-32,CGFLOAT_MAX)].height+4);
-    CGFloat maxHeight=largeText?92:MIN(260,MAX(56,available*.43-hintHeight-64));
+    CGFloat maxHeight=largeText?92:MIN(420,MAX(56,MIN(available*.55-hintHeight,available-hintHeight-230)));
     CGSize size=self.preparedImage.size; CGFloat aspect=(size.height>0)?size.width/size.height:.75;
     CGFloat w=MIN(MAX(1,width-32),maxHeight*aspect); CGFloat h=w/MAX(.001,aspect);
     self.canvas.frame=CGRectMake((width-w)/2,8,w,h); self.photoView.frame=self.canvas.bounds; self.overlayView.frame=self.canvas.bounds;
@@ -290,7 +291,7 @@ static NSString *WMEHex(UIColor *color) {
     NSDictionary *layer=[self selectedLayer]; BOOL enabled=[self.engine.settings[@"watermarkEnabled"] boolValue];
     self.reticle.hidden=!layer || !enabled;
     self.reticle.center=CGPointMake([layer[@"x"] doubleValue]*self.canvas.bounds.size.width,[layer[@"y"] doubleValue]*self.canvas.bounds.size.height);
-    BOOL locked=[layer[@"locked"] boolValue]; self.reticle.layer.borderColor=(locked ? UIColor.systemOrangeColor : WMEMint()).CGColor;
+    BOOL locked=[layer[@"locked"] boolValue]; self.reticle.layer.borderColor=(locked ? UIColor.systemOrangeColor : WMEAccent()).CGColor;
     NSString *intro=self.backgroundImage ? @"实拍画面预览" : @"示例画布 · 返回相机后实拍";
     NSString *hint=!enabled ? @"水印已关闭，开启后可编辑画布" : (!layer ? @"从下方选择或添加图层" : (locked ? @"已锁定 · 解锁后可调整" : @"拖动位置 · 双指缩放 / 旋转"));
     self.canvasHint.text=self.sectionPicker.selectedSegmentIndex==0?[NSString stringWithFormat:@"%@\n%@",intro,hint]:(self.sectionPicker.selectedSegmentIndex==3?@"相机设置 · 返回取景后生效":intro);
@@ -402,18 +403,18 @@ static NSString *WMEHex(UIColor *color) {
     path=[NSIndexPath indexPathForRow:path.row inSection:[self sourceSectionForVisibleSection:path.section]];
     // No reused control state; at most a screenful of lightweight visible cells.
     UITableViewCell *cell=[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil];
-    cell.backgroundColor=[UIColor colorWithWhite:.105 alpha:1]; cell.tintColor=WMEMint();
+    cell.backgroundColor=UIColor.secondarySystemGroupedBackgroundColor; cell.tintColor=WMEAccent();
     cell.textLabel.font=[UIFont preferredFontForTextStyle:UIFontTextStyleBody]; cell.textLabel.adjustsFontForContentSizeCategory=YES;
     cell.detailTextLabel.font=[UIFont preferredFontForTextStyle:UIFontTextStyleCaption1]; cell.detailTextLabel.adjustsFontForContentSizeCategory=YES;
     cell.textLabel.numberOfLines=0; cell.detailTextLabel.numberOfLines=0; cell.detailTextLabel.textColor=UIColor.secondaryLabelColor;
     if (path.section==0) {
-        if (path.row==(NSInteger)[self layers].count) { cell.imageView.image=[UIImage systemImageNamed:@"plus.circle.fill"];cell.textLabel.text=@"添加图层";cell.detailTextLabel.text=@"文字、动态日期或图片"; cell.textLabel.textColor=WMEMint(); return cell; }
+        if (path.row==(NSInteger)[self layers].count) { cell.imageView.image=[UIImage systemImageNamed:@"plus.circle.fill"];cell.textLabel.text=@"添加图层";cell.detailTextLabel.text=@"文字、动态日期或图片"; cell.textLabel.textColor=WMEAccent(); return cell; }
         NSDictionary *layer=[self layers][path.row]; BOOL image=[layer[@"type"] isEqual:@"image"];
         NSString *text=image ? @"图片水印" : layer[@"text"]; if (![text isKindOfClass:NSString.class] || !text.length) text=@"空白文字";
         if (text.length>48) text=[[text substringToIndex:48] stringByAppendingString:@"…"];
         cell.imageView.image=[UIImage systemImageNamed:image?@"photo":([layer[@"type"] isEqual:@"date"]?@"calendar":@"textformat")];cell.textLabel.text=text;
         cell.detailTextLabel.text=[NSString stringWithFormat:@"%@ · %@",image?@"图片":([layer[@"type"] isEqual:@"date"]?@"动态日期":@"文字"),[layer[@"locked"] boolValue]?@"已锁定":@"可编辑"];
-        if ([layer[@"id"] isEqual:self.selectedID]) { cell.accessoryType=UITableViewCellAccessoryCheckmark; cell.textLabel.textColor=WMEMint(); }
+        if ([layer[@"id"] isEqual:self.selectedID]) { cell.accessoryType=UITableViewCellAccessoryCheckmark; cell.textLabel.textColor=WMEAccent(); }
         return cell;
     }
     NSDictionary *row=[self rowAt:path]; if (!row) { cell.textLabel.text=@"尚未选择图层"; cell.selectionStyle=UITableViewCellSelectionStyleNone; return cell; }
@@ -425,7 +426,7 @@ static NSString *WMEHex(UIColor *color) {
         UILabel *title=[[UILabel alloc] init]; title.numberOfLines=0; title.font=[UIFont preferredFontForTextStyle:UIFontTextStyleSubheadline]; title.adjustsFontForContentSizeCategory=YES;
         double value=[values[key] doubleValue]; title.text=[NSString stringWithFormat:@"%@  %@",row[@"title"],[self valueLabel:value key:key]]; title.tag=913;
         UISlider *slider=[[UISlider alloc] init]; slider.minimumValue=[row[@"min"] floatValue]; slider.maximumValue=[row[@"max"] floatValue]; slider.value=value;
-        slider.tintColor=WMEMint(); slider.tag=path.section; slider.accessibilityIdentifier=key; slider.accessibilityLabel=row[@"title"];
+        slider.tintColor=WMEAccent(); slider.tag=path.section; slider.accessibilityIdentifier=key; slider.accessibilityLabel=row[@"title"];
         slider.accessibilityValue=[self valueLabel:value key:key]; slider.enabled=!disabled;
         [slider addTarget:self action:@selector(sliderChanged:) forControlEvents:UIControlEventValueChanged];
         [slider addTarget:self action:@selector(flushContinuousChanges) forControlEvents:UIControlEventTouchUpInside|UIControlEventTouchUpOutside|UIControlEventTouchCancel];
@@ -445,7 +446,7 @@ static NSString *WMEHex(UIColor *color) {
         if([key isEqual:@"saveTemplate"])cell.detailTextLabel.text=@"保留当前图层，供下次拍摄使用";
         if(path.section==3)cell.imageView.image=[UIImage systemImageNamed:@{@"presets":@"square.grid.2x2",@"saveTemplate":@"bookmark",@"myTemplates":@"rectangle.stack",@"importBackup":@"square.and.arrow.down",@"exportBackup":@"square.and.arrow.up"}[key]];
         if ([kind isEqual:@"toggle"]) {
-            UISwitch *toggle=[[UISwitch alloc] init]; toggle.onTintColor=WMEMint(); toggle.on=[values[key] boolValue]; toggle.tag=path.section; toggle.accessibilityIdentifier=key;
+            UISwitch *toggle=[[UISwitch alloc] init]; toggle.onTintColor=WMEAccent(); toggle.on=[values[key] boolValue]; toggle.tag=path.section; toggle.accessibilityIdentifier=key;
             toggle.accessibilityLabel=row[@"title"]; toggle.enabled=!disabled; [toggle addTarget:self action:@selector(toggleChanged:) forControlEvents:UIControlEventValueChanged]; cell.accessoryView=toggle;
         } else {
             cell.accessoryType=UITableViewCellAccessoryDisclosureIndicator;

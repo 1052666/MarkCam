@@ -38,6 +38,8 @@ selectors = [
     'captureOutput:didFinishProcessingLivePhotoToMovieFileAtURL:duration:photoDisplayTime:resolvedSettings:error:',
 ]
 header_path = SDK / 'System/Library/Frameworks/AVFoundation.framework/Headers/AVCapturePhotoOutput.h'
+if not header_path.is_file():
+    header_path=next((SDK/'System/Library/Frameworks').rglob('AVCapturePhotoOutput.h'))
 header = header_path.read_text(encoding='utf-8')
 header = re.sub(r'/\*.*?\*/|//[^\n]*', '', header, flags=re.S)
 protocol = re.search(

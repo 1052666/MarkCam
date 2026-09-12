@@ -3,6 +3,7 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import <math.h>
+#import <AVFoundation/AVFoundation.h>
 #import "CameraViewController.h"
 #import "WMEditorViewController.h"
 #import "WMEngine.h"
@@ -15,6 +16,17 @@
 - (void)modeChanged;
 - (void)capturePressed;
 - (void)resumeCameraSession;
+- (void)configure;
+- (void)configureLiveMode;
+- (void)configurePhotoResolution;
+- (void)applyConnections;
+- (BOOL)applicationIsActive;
+- (AVAuthorizationStatus)cameraAuthorizationStatus;
+- (void)didBecomeActive:(NSNotification *)notification;
+- (void)willResignActive:(NSNotification *)notification;
+- (void)background:(NSNotification *)notification;
+- (void)foreground:(NSNotification *)notification;
+- (void)runtimeError:(NSNotification *)notification;
 @end
 @interface WMEditorViewController (ReviewAccess)
 - (NSInteger)sourceSectionForVisibleSection:(NSInteger)section;
@@ -24,6 +36,9 @@
 
 static NSMutableArray *checks;
 static NSUInteger saveCount;
+static NSUInteger glassFactoryCalls;
+static id (*originalGlassFactory)(id,SEL);
+static id countedGlassFactory(id cls,SEL sel) {glassFactoryCalls++;return originalGlassFactory(cls,sel);}
 static void (*originalSave)(id,SEL);
 static void countedSave(id engine,SEL selector) { saveCount++;originalSave(engine,selector); }
 static void Check(NSString *name,BOOL passed) { [checks addObject:@{@"check":name,@"passed":@(passed)}]; }
@@ -64,6 +79,7 @@ static UIImage *Fixture(void) {
     [self setValue:@YES forKey:@"configured"];
 }
 - (void)capturePressed { self.pressCount++; }
+- (void)runtimeError:(NSNotification *)notification { /* No sensor in this UI fixture. */ }
 - (void)resumeCameraSession {
     // A sensorless Simulator cannot start a real capture session. Keep lifecycle
     // readiness controlled while exercising the production UI state machine.
@@ -83,6 +99,45 @@ static UIImage *Fixture(void) {
 }
 @end
 
+// Only OS hardware/memory boundaries are replaced. Queue disk scanning,
+// requestCamera, lifecycle notifications and resumeCameraSession are production.
+@interface RecoveryQueue : MCProcessingQueue
+@end
+@implementation RecoveryQueue
++ (NSURL *)directory {return [WMEngine.shared.documentsURL URLByAppendingPathComponent:@"RecoveryFixture" isDirectory:YES];}
+- (uint64_t)availableCaptureMemory {return 1024ULL*1024*1024;}
+@end
+@interface LifecycleSession : AVCaptureSession
+@property(atomic) BOOL testRunning;
+@property(atomic) NSUInteger starts;
+@end
+@implementation LifecycleSession
+- (BOOL)isRunning {return self.testRunning;}
+- (void)startRunning {self.starts++;self.testRunning=YES;}
+- (void)stopRunning {self.testRunning=NO;}
+- (void)beginConfiguration {}
+- (void)commitConfiguration {}
+@end
+@interface LifecycleCamera : CameraViewController
+@property(nonatomic,strong) LifecycleSession *testSession;
+@property(nonatomic) NSUInteger configurations;
+@end
+@implementation LifecycleCamera
+- (BOOL)applicationIsActive {return NO;} // view loads before cold-launch activation
+- (AVAuthorizationStatus)cameraAuthorizationStatus {return AVAuthorizationStatusAuthorized;}
+- (void)configure {
+ self.configurations++;
+ self.testSession=[LifecycleSession new];[self setValue:self.testSession forKey:@"session"];
+ [(MCProcessingQueue *)[self valueForKey:@"workQueue"] setOnChange:nil];
+ [self setValue:[ReviewQueue new] forKey:@"workQueue"];
+ [self setValue:@YES forKey:@"configured"];[self resumeCameraSession];
+}
+- (void)configureLiveMode {}
+- (void)configurePhotoResolution {}
+- (void)applyConnections {}
+- (void)runtimeError:(NSNotification *)notification {[super runtimeError:notification];}
+@end
+
 @interface ReviewSlider : UISlider
 @property(nonatomic) BOOL handTracking;
 @end
@@ -97,10 +152,10 @@ static UIImage *Fixture(void) {
 @implementation ReviewHost
 - (void)show:(UIViewController *)controller {
     if(self.content){[self.content willMoveToParentViewController:nil];[self.content.view removeFromSuperview];[self.content removeFromParentViewController];}
-    self.content=controller;[self addChildViewController:controller];controller.view.frame=self.view.bounds;controller.view.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;[self.view addSubview:controller.view];[controller didMoveToParentViewController:self];
+    self.content=controller;[self addChildViewController:controller];controller.view.frame=self.view.bounds;controller.view.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;[self.view addSubview:controller.view];[controller didMoveToParentViewController:self];[self setNeedsStatusBarAppearanceUpdate];
 }
 - (UIInterfaceOrientationMask)supportedInterfaceOrientations { return UIInterfaceOrientationMaskAllButUpsideDown; }
-- (UIStatusBarStyle)preferredStatusBarStyle { return UIStatusBarStyleLightContent; }
+- (UIViewController *)childViewControllerForStatusBarStyle { return self.content; }
 @end
 
 @interface ReviewScene : UIResponder <UIWindowSceneDelegate>
@@ -111,29 +166,49 @@ static UIImage *Fixture(void) {
 @property(nonatomic,strong) NSURL *directory;
 @property(nonatomic,strong) NSMutableArray *screenshots;
 @property(nonatomic) NSInteger step;
+@property(nonatomic,copy) NSString *screenshotToken;
+@property(nonatomic,copy) void (^afterScreenshot)(void);
+@property(nonatomic,strong) RecoveryQueue *recoveryQueue;
+@property(nonatomic,strong) LifecycleCamera *lifecycleCamera;
 @end
 @implementation ReviewScene
 - (void)scene:(UIScene *)scene willConnectToSession:(UISceneSession *)session options:(UISceneConnectionOptions *)options {
     checks=[NSMutableArray new];self.screenshots=[NSMutableArray new];
+    NSInteger launches=[NSUserDefaults.standardUserDefaults integerForKey:@"reviewLaunches"]+1;
+    [NSUserDefaults.standardUserDefaults setInteger:launches forKey:@"reviewLaunches"];
+    [NSUserDefaults.standardUserDefaults synchronize];
+    if(@available(iOS 26.0,*)){
+        Method method=class_getClassMethod(UIButtonConfiguration.class,@selector(glassButtonConfiguration));
+        originalGlassFactory=(void *)method_getImplementation(method);method_setImplementation(method,(IMP)countedGlassFactory);
+    }
     Method save=class_getInstanceMethod(WMEngine.class,@selector(save));originalSave=(void *)method_getImplementation(save);method_setImplementation(save,(IMP)countedSave);
     self.directory=[[[NSFileManager defaultManager] URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask].firstObject URLByAppendingPathComponent:@"UIReview" isDirectory:YES];
     [NSFileManager.defaultManager createDirectoryAtURL:self.directory withIntermediateDirectories:YES attributes:nil error:nil];
-    self.window=[[UIWindow alloc] initWithWindowScene:(UIWindowScene *)scene];self.window.overrideUserInterfaceStyle=UIUserInterfaceStyleDark;self.window.tintColor=MCInterfaceAccent();
+    self.window=[[UIWindow alloc] initWithWindowScene:(UIWindowScene *)scene];self.window.overrideUserInterfaceStyle=UIUserInterfaceStyleLight;self.window.tintColor=UIColor.systemBlueColor;
     self.host=[ReviewHost new];self.window.rootViewController=self.host;[self.window makeKeyAndVisible];
     self.camera=[ReviewCamera new];[self.host show:self.camera];
-    [self nextAfter:1];
+    [self nextAfter:6]; // Let startup feedback finish before idle camera screenshots.
 }
 - (void)nextAfter:(double)seconds { dispatch_after(dispatch_time(DISPATCH_TIME_NOW,seconds*NSEC_PER_SEC),dispatch_get_main_queue(),^{[self runStep];}); }
-- (void)snapshot:(NSString *)name {
+- (void)snapshot:(NSString *)name after:(void (^)(void))completion {
     [self.window layoutIfNeeded];
-    UIGraphicsImageRendererFormat *format=[UIGraphicsImageRendererFormat defaultFormat];format.scale=2;format.opaque=YES;
-    UIImage *image=[[[UIGraphicsImageRenderer alloc] initWithSize:self.window.bounds.size format:format] imageWithActions:^(UIGraphicsImageRendererContext *context){[self.window drawViewHierarchyInRect:self.window.bounds afterScreenUpdates:YES];}];
-    NSString *file=[name stringByAppendingString:@".png"];
-    Check([@"Screenshot " stringByAppendingString:name],[UIImagePNGRepresentation(image) writeToURL:[self.directory URLByAppendingPathComponent:file] atomically:YES]);
-    [self.screenshots addObject:@{@"file":file,@"width":@(image.size.width),@"height":@(image.size.height),@"fixture":@YES}];
+    // Glass is rendered by the system compositor. An offscreen UIKit draw is
+    // not authoritative evidence of refraction, shadows or system status bars.
+    self.screenshotToken=NSUUID.UUID.UUIDString;self.afterScreenshot=completion;
+    NSDictionary *checkpoint=@{@"name":name,@"token":self.screenshotToken};
+    [[NSJSONSerialization dataWithJSONObject:checkpoint options:0 error:nil] writeToURL:[self.directory URLByAppendingPathComponent:@"checkpoint.json"] atomically:YES];
+    [self.screenshots addObject:[name stringByAppendingString:@".png"]];
 }
 - (void)checkCamera:(NSString *)name {
     [self.camera.view layoutIfNeeded];
+    if(@available(iOS 26.0,*)){
+        UIButton *tool=[self.camera valueForKey:@"settingsButton"];
+        Check(@"iOS 26 native glass configuration is installed",tool.configuration!=nil&&glassFactoryCalls>=6);
+        Check(@"Native glass has no custom blur behind it",[tool valueForKey:@"fallbackMaterial"]==nil);
+    }else{
+        Check(@"Older iOS uses a system material fallback",[[self.camera valueForKey:@"settingsButton"] valueForKey:@"fallbackMaterial"]!=nil);
+    }
+    Check(@"Precision zoom stays out of the composition until needed",[(UISlider *)[self.camera valueForKey:@"zoomSlider"] isHidden]);
     for(NSString *key in @[@"shutter",@"filesButton",@"switchButton",@"editButton",@"watermarkButton",@"settingsButton",@"liveButton",@"mode",@"lensSelector",@"zoomSlider"]){
         UIView *view=[self.camera valueForKey:key];CGRect rect=[view convertRect:view.bounds toView:self.camera.view];
         Check([NSString stringWithFormat:@"%@ %@ 44pt target",name,key],view.bounds.size.width>=43.9&&view.bounds.size.height>=43.9);
@@ -147,13 +222,13 @@ static UIImage *Fixture(void) {
     Check([name stringByAppendingString:@" shutter has no queued animations"],shutter.layer.animationKeys.count==0);
     [self.camera setValue:@YES forKey:@"busy"];[self.camera updateControls];Check(@"Busy capture disables the shutter",!shutter.enabled);
     [self.camera setValue:@NO forKey:@"busy"];[self.camera updateControls];Check(@"Capture completion restores the shutter",shutter.enabled);
-    ReviewQueue *queue=[self.camera valueForKey:@"workQueue"];queue.reviewBlockReason=@"模拟队列等待";[self.camera updateControls];Check(@"Queue backpressure disables the shutter",!shutter.enabled);
-    queue.reviewBlockReason=nil;[self.camera updateControls];Check(@"Queue recovery restores the shutter",shutter.enabled);
+
 }
 - (void)selectTab:(NSInteger)index {
     UISegmentedControl *picker=[self.editor valueForKey:@"sectionPicker"];picker.selectedSegmentIndex=index;[picker sendActionsForControlEvents:UIControlEventValueChanged];
 }
 - (void)checkEditorTab:(NSInteger)tab {
+    Check(@"Editor status bar adapts to the system appearance",self.editor.preferredStatusBarStyle==UIStatusBarStyleDefault);
     UITableView *table=[self.editor valueForKey:@"table"];
     Check([NSString stringWithFormat:@"Tab %ld contains only relevant sections",(long)tab],table.numberOfSections==(tab==0?2:1));
     for(NSInteger section=0;section<table.numberOfSections;section++){
@@ -161,7 +236,7 @@ static UIImage *Fixture(void) {
         Check(@"Visible section contains rows",[table numberOfRowsInSection:section]>0);
     }
     CGRect first=[table rectForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]];
-    Check(@"First tool row starts near the picker",first.origin.y-table.contentOffset.y<90);
+    Check(@"First tool row starts near the viewport edge",first.origin.y-table.contentOffset.y<90);
     Check([NSString stringWithFormat:@"Tab %ld leaves usable scroll area",(long)tab],table.bounds.size.height>120);
     UIView *picker=[self.editor valueForKey:@"sectionPicker"];Check(@"Editor picker has 44pt hit area",picker.bounds.size.height>=43.9);
 }
@@ -189,48 +264,128 @@ static UIImage *Fixture(void) {
 }
 - (void)runStep {
     @try {
+        if(self.screenshotToken){
+            NSURL *ack=[self.directory URLByAppendingPathComponent:[self.screenshotToken stringByAppendingString:@".captured"]];
+            if(![NSFileManager.defaultManager fileExistsAtPath:ack.path]){[self nextAfter:.1];return;}
+            self.screenshotToken=nil;void (^completion)(void)=self.afterScreenshot;self.afterScreenshot=nil;
+            if(completion)completion();[self nextAfter:.7];return;
+        }
         switch(self.step++) {
-            case 0: [self checkCamera:@"Portrait photo"];[self snapshot:@"01-camera-photo"];
-                [(UISegmentedControl *)[self.camera valueForKey:@"mode"] setSelectedSegmentIndex:1];[[self.camera valueForKey:@"mode"] sendActionsForControlEvents:UIControlEventValueChanged];break;
-            case 1: [self checkCamera:@"Portrait video"];[self snapshot:@"02-camera-video"];
-                [self.host setNeedsUpdateOfSupportedInterfaceOrientations];
-                [self.window.windowScene requestGeometryUpdateWithPreferences:[[UIWindowSceneGeometryPreferencesIOS alloc] initWithInterfaceOrientations:UIInterfaceOrientationMaskLandscapeRight] errorHandler:^(NSError *error){Check(@"Landscape rotation accepted",NO);}];break;
-            case 2: [self.camera modeChanged];[self.window layoutIfNeeded];break;
-            case 3: Check(@"Simulator rotated to landscape",self.window.bounds.size.width>self.window.bounds.size.height);[self checkCamera:@"Landscape video"];[self snapshot:@"03-camera-landscape"];
-                [self.window.windowScene requestGeometryUpdateWithPreferences:[[UIWindowSceneGeometryPreferencesIOS alloc] initWithInterfaceOrientations:UIInterfaceOrientationMaskPortrait] errorHandler:^(NSError *error){Check(@"Portrait rotation accepted",NO);}];break;
-            case 4: self.editor=[WMEditorViewController new];self.editor.backgroundImage=Fixture();[self.host show:[[UINavigationController alloc] initWithRootViewController:self.editor]];break;
-            case 5: [self checkEditorTab:0];[self snapshot:@"04-editor-layers"];[self selectTab:1];break;
-            case 6: [self checkEditorTab:1];[self testContinuousEdits];[self snapshot:@"05-editor-tone"];[self selectTab:2];break;
-            case 7: [self checkEditorTab:2];[self snapshot:@"06-editor-templates"];[self selectTab:3];break;
-            case 8: [self checkEditorTab:3];[self snapshot:@"07-editor-settings"];
-                [self.host setOverrideTraitCollection:[UITraitCollection traitCollectionWithPreferredContentSizeCategory:UIContentSizeCategoryAccessibilityExtraExtraExtraLarge] forChildViewController:self.host.content];break;
-            case 9: [self checkEditorTab:3];[self snapshot:@"08-editor-accessibility-text"];
-                [self.host show:self.camera];[self.camera modeChanged];[[self.camera valueForKey:@"settingsButton"] sendActionsForControlEvents:UIControlEventTouchUpInside];
-                Check(@"Settings presents without waiting for a frame",[self.camera.presentedViewController isKindOfClass:UINavigationController.class]);break;
-            case 10: {
+            case 0: { [self checkCamera:@"Portrait photo"];
+                [self snapshot:@"01-camera-photo" after:^{[(UISegmentedControl *)[self.camera valueForKey:@"mode"] setSelectedSegmentIndex:1];[[self.camera valueForKey:@"mode"] sendActionsForControlEvents:UIControlEventValueChanged];}];break;
+            }
+            case 1: { [self checkCamera:@"Portrait video"];
+                [self snapshot:@"02-camera-video" after:^{[self.host setNeedsUpdateOfSupportedInterfaceOrientations];[self.window.windowScene requestGeometryUpdateWithPreferences:[[UIWindowSceneGeometryPreferencesIOS alloc] initWithInterfaceOrientations:UIInterfaceOrientationMaskLandscapeRight] errorHandler:^(NSError *error){Check(@"Landscape rotation accepted",NO);}];}];break;
+            }
+            case 2: { [self.camera modeChanged];[self.window layoutIfNeeded];break;
+            }
+            case 3: { Check(@"Simulator rotated to landscape",self.window.bounds.size.width>self.window.bounds.size.height);[self checkCamera:@"Landscape video"];
+                [self snapshot:@"03-camera-landscape" after:^{[self.window.windowScene requestGeometryUpdateWithPreferences:[[UIWindowSceneGeometryPreferencesIOS alloc] initWithInterfaceOrientations:UIInterfaceOrientationMaskPortrait] errorHandler:^(NSError *error){Check(@"Portrait rotation accepted",NO);}];}];break;
+            }
+            case 4: { self.editor=[WMEditorViewController new];self.editor.backgroundImage=Fixture();[self.host show:[[UINavigationController alloc] initWithRootViewController:self.editor]];break;
+            }
+            case 5: { [self checkEditorTab:0];[self snapshot:@"04-editor-layers" after:^{[self selectTab:1];}];break;
+            }
+            case 6: { [self checkEditorTab:1];[self testContinuousEdits];[self snapshot:@"05-editor-tone" after:^{[self selectTab:2];}];break;
+            }
+            case 7: { [self checkEditorTab:2];[self snapshot:@"06-editor-templates" after:^{[self selectTab:3];}];break;
+            }
+            case 8: { [self checkEditorTab:3];
+                [self snapshot:@"07-editor-settings" after:^{
+                    self.window.overrideUserInterfaceStyle=UIUserInterfaceStyleDark;
+                    [self snapshot:@"08-editor-settings-dark" after:^{
+                        Check(@"Editor follows dark appearance",self.editor.traitCollection.userInterfaceStyle==UIUserInterfaceStyleDark);
+                        self.window.overrideUserInterfaceStyle=UIUserInterfaceStyleLight;
+                        [self.host setOverrideTraitCollection:[UITraitCollection traitCollectionWithPreferredContentSizeCategory:UIContentSizeCategoryAccessibilityExtraExtraExtraLarge] forChildViewController:self.host.content];
+                    }];
+                }];break;
+            }
+            case 9: { [self checkEditorTab:3];
+                [self snapshot:@"08-editor-accessibility-text" after:^{[self.host show:self.camera];[self.camera modeChanged];[[self.camera valueForKey:@"settingsButton"] sendActionsForControlEvents:UIControlEventTouchUpInside];Check(@"Settings presents without waiting for a frame",[self.camera.presentedViewController isKindOfClass:UINavigationController.class]);}];break;
+            }
+            case 10: { {
                 UINavigationController *navigation=(UINavigationController *)self.camera.presentedViewController;
                 self.editor=(WMEditorViewController *)navigation.topViewController;
                 Check(@"Settings opens its own tab directly",[(UISegmentedControl *)[self.editor valueForKey:@"sectionPicker"] selectedSegmentIndex]==3);[self checkEditorTab:3];
-                [self snapshot:@"09-editor-direct-settings"];
-                [self.camera dismissViewControllerAnimated:NO completion:nil];break;
+                [self snapshot:@"09-editor-direct-settings" after:^{[self.camera dismissViewControllerAnimated:NO completion:nil];}];break;
             }
-            case 11: Check(@"Returning from actual settings restores capture",[(UIButton *)[self.camera valueForKey:@"shutter"] isEnabled]);
+            }
+            case 11: { Check(@"Returning from actual settings restores capture",[(UIButton *)[self.camera valueForKey:@"shutter"] isEnabled]);
                 [self.host setOverrideTraitCollection:[UITraitCollection traitCollectionWithAccessibilityContrast:UIAccessibilityContrastHigh] forChildViewController:self.camera];[self.camera modeChanged];break;
-            case 12: {
-                MCChromeView *dock=[self.camera valueForKey:@"captureDock"];
-                Check(@"High contrast uses opaque chrome",[(UIView *)[dock valueForKey:@"material"] isHidden]);
-                [self snapshot:@"10-camera-high-contrast"];[self finish];return;
             }
-            default: [self finish];return;
+            case 12: { {
+                UIButton *tool=[self.camera valueForKey:@"settingsButton"];
+                Check(@"High contrast retains a native accessible control",tool.accessibilityLabel.length>0&&tool.bounds.size.width>=44);
+                [self snapshot:@"10-camera-high-contrast" after:^{[self beginRecoveryChecks];}];break;
+            }
+            }
+            case 13: { [self checkRecovery:NO];break;
+            }
+            case 14: { [self checkRecovery:YES];[self beginLifecycleChecks];break;
+            }
+            case 15: { [self checkActivatedLifecycle];break;
+            }
+            case 16: { [self checkInactiveLifecycle];break;
+            }
+            case 17: { [self checkReactivatedLifecycle];[self finish];return;
+            }
+            default: { [self finish];return;
+            }
         }
         [self nextAfter:.7];
     } @catch(NSException *exception) {
         Check([NSString stringWithFormat:@"Uncaught %@: %@",exception.name,exception.reason],NO);[self finish];
     }
 }
+- (void)beginRecoveryChecks {
+    UIButton *shutter=[self.camera valueForKey:@"shutter"];
+    ReviewQueue *queue=[self.camera valueForKey:@"workQueue"];queue.reviewBlockReason=@"模拟队列等待";[self.camera updateControls];Check(@"Queue backpressure disables the shutter",!shutter.enabled);
+    queue.reviewBlockReason=nil;[self.camera updateControls];Check(@"Queue recovery restores the shutter",shutter.enabled);
+    NSURL *directory=RecoveryQueue.directory;
+    [NSFileManager.defaultManager createDirectoryAtURL:directory withIntermediateDirectories:YES attributes:nil error:nil];
+    NSArray *stages=@[@"capturing",@"capturing",@"incomplete",@"incomplete",@"saving",@"saving",@"ready",@"ready",@"raw",@"ready",@"raw",@"raw",@"raw",@"raw",@"raw",@"raw"];
+    for(NSUInteger i=0;i<stages.count;i++){
+        NSMutableDictionary *job=[@{@"stage":stages[i],@"kind":@"photo",@"date":@0,@"settings":WMEngine.shared.snapshot} mutableCopy];
+        if(i==6||i==7)job[@"queueBlocked"]=@YES;
+        if(i>=10)job[@"date"]=@"invalid";
+        [MCProcessingQueue writeJob:job URL:[directory URLByAppendingPathComponent:[NSString stringWithFormat:@"%lu.job.json",(unsigned long)i]]];
+    }
+    self.recoveryQueue=[RecoveryQueue new];[self.recoveryQueue refresh];
+}
+- (void)checkRecovery:(BOOL)recreated {
+    Check(recreated?@"Recreated queue preserves all recovery entries":@"Disk scan preserves interrupted and failed photos",self.recoveryQueue.pendingCount==16);
+    Check(@"Only runnable jobs occupy the capture budget",self.recoveryQueue.queuedCount==2);
+    Check(@"Interrupted, failed and malformed jobs do not gray out the shutter",[self.recoveryQueue captureBlockReasonForLive:NO reservedCount:0]==nil);
+    NSDictionary *saving=[NSJSONSerialization JSONObjectWithData:[NSData dataWithContentsOfURL:[RecoveryQueue.directory URLByAppendingPathComponent:@"4.job.json"]] options:0 error:nil];
+    Check(@"Uncertain Photos save is never automatically retried",[saving[@"stage"] isEqual:@"saving"]);
+    self.recoveryQueue=[RecoveryQueue new];[self.recoveryQueue refresh];
+}
+- (void)beginLifecycleChecks {
+    self.lifecycleCamera=[LifecycleCamera new];[self.lifecycleCamera loadViewIfNeeded];
+    Check(@"Authorized cold launch waits for active state",self.lifecycleCamera.configurations==0);
+    [self.lifecycleCamera didBecomeActive:nil];
+}
+- (void)checkActivatedLifecycle {
+    Check(@"Activation configures the previously authorized camera",self.lifecycleCamera.configurations==1);
+    Check(@"Activation starts the session",self.lifecycleCamera.testSession.starts==1&&self.lifecycleCamera.testSession.running);
+    Check(@"Activation releases the shutter",[(UIButton *)[self.lifecycleCamera valueForKey:@"shutter"] isEnabled]);
+    [self.lifecycleCamera willResignActive:nil];[self.lifecycleCamera background:nil];
+}
+- (void)checkInactiveLifecycle {
+    Check(@"Background stops the capture session",!self.lifecycleCamera.testSession.running);
+    [self.lifecycleCamera foreground:nil];
+    Check(@"willEnterForeground alone does not start an inactive camera",self.lifecycleCamera.testSession.starts==1);
+    [self.lifecycleCamera didBecomeActive:nil];
+}
+- (void)checkReactivatedLifecycle {
+    Check(@"Reactivation restarts the existing session",self.lifecycleCamera.configurations==1&&self.lifecycleCamera.testSession.starts==2);
+    Check(@"Returning to the app clears stale busy and pending state",![[self.lifecycleCamera valueForKey:@"busy"] boolValue]&&![[self.lifecycleCamera valueForKey:@"sessionRefreshPending"] boolValue]);
+    Check(@"Returning to the app restores the shutter",[(UIButton *)[self.lifecycleCamera valueForKey:@"shutter"] isEnabled]);
+    [(NSTimer *)[self.lifecycleCamera valueForKey:@"clockTimer"] invalidate];
+}
 - (void)finish {
     NSUInteger failed=0;for(NSDictionary *check in checks)if(![check[@"passed"] boolValue])failed++;
-    NSDictionary *report=@{@"scope":@"Actual UIKit execution on iOS Simulator. Camera callbacks and preview scene are fixtures; no sensor throughput or photo quality measurement.",@"passed":@(checks.count-failed),@"failed":@(failed),@"checks":checks,@"screenshots":self.screenshots,@"device_tested":@NO,@"simulator_tested":@YES,@"os":UIDevice.currentDevice.systemVersion};
+    NSDictionary *report=@{@"scope":@"Actual UIKit execution on iOS Simulator. Camera callbacks and preview scene are fixtures; no sensor throughput or photo quality measurement.",@"passed":@(checks.count-failed),@"failed":@(failed),@"checks":checks,@"screenshots":self.screenshots,@"device_tested":@NO,@"simulator_tested":@YES,@"os":UIDevice.currentDevice.systemVersion,@"launch_number":@([NSUserDefaults.standardUserDefaults integerForKey:@"reviewLaunches"]),@"native_glass_configurations":@(glassFactoryCalls),@"screenshot_method":@"simctl system compositor"};
     [[NSJSONSerialization dataWithJSONObject:report options:NSJSONWritingPrettyPrinted error:nil] writeToURL:[self.directory URLByAppendingPathComponent:@"ui-review-report.json"] atomically:YES];
 }
 @end
