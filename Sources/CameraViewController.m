@@ -72,6 +72,7 @@ static NSString *MCID(void){return [NSString stringWithFormat:@"%013lld-%@",(lon
 @property(nonatomic,strong) NSMutableDictionary<NSString *,MCPhotoCaptureProcessor *> *photoCaptures;
 @property(nonatomic,copy) NSString *shutterCaptureID;
 @property(nonatomic,copy) NSString *captureBlockMessage;
+@property(nonatomic) BOOL sessionRefreshPending;
 @property(nonatomic) BOOL memoryPreviewFallback;
 @property(atomic) BOOL liveSupported;
 @property(nonatomic,strong) UISegmentedControl *mode;
@@ -349,6 +350,7 @@ static NSString *MCID(void){return [NSString stringWithFormat:@"%013lld-%@",(lon
  if(!self.configured||self.editorShown)return;
  BOOL liveChanged=[old[@"livePhotoEnabled"]boolValue]!=[self.activeSettings[@"livePhotoEnabled"]boolValue];
  BOOL connectionsChanged=!old||[old[@"mirrorFront"]boolValue]!=[self.activeSettings[@"mirrorFront"]boolValue]||[old[@"exposureBias"]doubleValue]!=[self.activeSettings[@"exposureBias"]doubleValue];
+ if((liveChanged||connectionsChanged)&&self.photoCaptures.count){self.sessionRefreshPending=YES;return;}
  if(liveChanged||connectionsChanged)dispatch_async(self.sessionQueue,^{if(liveChanged)[self.session beginConfiguration];if(liveChanged)[self configureLiveMode];[self applyConnections];if(liveChanged)[self.session commitConfiguration];});
 }
 - (void)invalidateOverlay {self.overlayRevision++;[self updateOverlay];}
@@ -371,7 +373,7 @@ static NSString *MCID(void){return [NSString stringWithFormat:@"%013lld-%@",(lon
  [self.preview requestSnapshot:^(UIImage *image){CameraViewController *camera=weak;if(!camera)return;camera.busy=NO;if(camera.inBackground){[camera updateControls];return;}camera.editorShown=YES;[camera updatePreviewRoute];dispatch_async(camera.sessionQueue,^{[camera.session stopRunning];});
  WMEditorViewController *e=[WMEditorViewController new];e.opensSettings=settings;e.backgroundImage=image;e.onChange=^{[weak refreshSettings];};UINavigationController *nav=[[UINavigationController alloc]initWithRootViewController:e];nav.modalPresentationStyle=UIModalPresentationFullScreen;[camera presentViewController:nav animated:YES completion:nil];[camera updateControls];}];
 }
-- (void)viewDidAppear:(BOOL)animated {[super viewDidAppear:animated];if(self.editorShown&&!self.presentedViewController){self.editorShown=NO;self.gpuFailed=NO;[self refreshSettings];[self updateControls];dispatch_async(self.sessionQueue,^{if(self.configured&&!self.inBackground){[self.session beginConfiguration];[self configureLiveMode];[self configurePhotoResolution];[self applyConnections];[self.session commitConfiguration];[self.session startRunning];}});}}
+- (void)viewDidAppear:(BOOL)animated {[super viewDidAppear:animated];if(self.editorShown&&!self.presentedViewController){self.editorShown=NO;self.gpuFailed=NO;[self refreshSettings];[self updateControls];[self resumeCameraSession];}}
 - (void)updateControls {
  BOOL locked=self.busy||self.recording||self.photoCaptures.count>0;self.workQueue.captureBusy=locked||self.editorShown;self.zoomSlider.enabled=!locked&&self.configured;self.lensSelector.enabled=!locked&&self.configured;self.settingsButton.enabled=!locked;[self refreshLiveUI];if(!locked)[self refreshZoomUI];self.mode.enabled=!locked;self.switchButton.enabled=!locked&&self.configured;self.editButton.enabled=!locked;self.filesButton.enabled=!locked;self.watermarkButton.enabled=!locked;self.shutter.enabled=self.configured&&(!self.busy||self.recording)&&!self.inBackground&&!self.editorShown&&!self.applicationInactive;
  self.shutter.backgroundColor=self.wantsVideo?UIColor.systemRedColor:UIColor.whiteColor;[self.shutter setTitle:self.recording?@"■":@"" forState:UIControlStateNormal];[self.shutter setTitleColor:UIColor.whiteColor forState:UIControlStateNormal];self.shutter.accessibilityLabel=self.recording?@"停止录像":(self.wantsVideo?@"开始录像":@"拍照");UIApplication.sharedApplication.idleTimerDisabled=self.busy||self.recording;[self queueChanged];
@@ -390,6 +392,7 @@ static NSString *MCID(void){return [NSString stringWithFormat:@"%013lld-%@",(lon
 }
 - (BOOL)requestsLive {return !self.wantsVideo&&[self.activeSettings[@"livePhotoEnabled"]boolValue];}
 - (NSString *)captureAdmissionReason {
+ if(self.sessionRefreshPending)return @"正在恢复相机，拍摄完成后自动开放快门";
  BOOL live=[self requestsLive];
  if(self.wantsVideo&&self.photoCaptures.count)return @"照片正在暂存，稍后可开始录像";
  if(!self.wantsVideo&&!MCCanAcceptPhotoRequest((unsigned)self.photoCaptures.count,live,[self hasLiveCapture]))return @"正在接收照片，快门将自动恢复";
@@ -479,6 +482,7 @@ static NSString *MCID(void){return [NSString stringWithFormat:@"%013lld-%@",(lon
  if(!self.photoCaptures.count)[self endCaptureLease];
  if(job&&meta){[self.workQueue didCapture];[self status:@"原片已暂存 ✓ 可继续拍摄"];}
  else { [self.workQueue refresh];if(error){[self recordCaptureError:error];[self alert:@"拍摄未完整完成" message:error.localizedDescription];} }
+ if(!self.photoCaptures.count&&self.sessionRefreshPending)[self resumeCameraSession];
  [self updateControls];
 }
 - (void)captureOutput:(AVCaptureFileOutput *)output didStartRecordingToOutputFileAtURL:(NSURL *)url fromConnections:(NSArray<AVCaptureConnection *> *)connections {
@@ -570,8 +574,22 @@ static NSString *MCID(void){return [NSString stringWithFormat:@"%013lld-%@",(lon
 - (void)background:(NSNotification *)n {
  self.inBackground=YES;[self updatePreviewRoute];self.countdownGeneration++;if(self.countdownLabel.text.length){self.countdownLabel.text=@"";self.busy=NO;}self.workQueue.foreground=NO;dispatch_async(self.sessionQueue,^{if(self.movieOutput.isRecording)[self.movieOutput stopRecording];[self.session stopRunning];});[self updateControls];UIApplication.sharedApplication.idleTimerDisabled=NO;
 }
+- (void)resumeCameraSession {
+ // Foreground can arrive before pending JPEG/Live callbacks. Keep the current
+ // topology until every request has finished; changing audio/format early can
+ // interrupt those resources and leave the shutter locked again.
+ if(!self.configured){self.sessionRefreshPending=NO;return;}
+ self.sessionRefreshPending=YES;
+ if(self.inBackground||self.editorShown)return;
+ if(self.photoCaptures.count){dispatch_async(self.sessionQueue,^{if(!self.inBackground&&!self.editorShown)[self.session startRunning];});return;}
+ self.busy=YES;[self updateControls];
+ dispatch_async(self.sessionQueue,^{
+  if(!self.inBackground&&!self.editorShown){[self.session beginConfiguration];[self configureLiveMode];[self configurePhotoResolution];[self applyConnections];[self.session commitConfiguration];[self.session startRunning];}
+  dispatch_async(dispatch_get_main_queue(),^{self.sessionRefreshPending=NO;self.busy=NO;[self updateControls];});
+ });
+}
 - (void)foreground:(NSNotification *)n {
- self.inBackground=NO;self.workQueue.foreground=YES;self.gpuFailed=NO;[self refreshSettings];if(!self.configured){[self requestCamera];return;}dispatch_async(self.sessionQueue,^{if(!self.editorShown){[self.session beginConfiguration];[self configureLiveMode];[self configurePhotoResolution];[self applyConnections];[self.session commitConfiguration];[self.session startRunning];}});[self updateControls];
+ self.inBackground=NO;self.workQueue.foreground=YES;self.gpuFailed=NO;[self refreshSettings];if(!self.configured){[self requestCamera];return;}[self resumeCameraSession];[self updateControls];
 }
 - (void)interrupted:(NSNotification *)n {[self status:@"相机暂时被系统中断，录像原片将保留"];}
 - (void)interruptionEnded:(NSNotification *)n {dispatch_async(self.sessionQueue,^{if(!self.inBackground&&!self.editorShown)[self.session startRunning];});[self status:@"相机已恢复"];}

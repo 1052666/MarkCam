@@ -1,6 +1,7 @@
 // Host-only integration test: real delegate, simulated native callbacks and
 // temporary files. It does not exercise a camera, JPEG codec, or iPhone runtime.
 #import <Foundation/Foundation.h>
+#import <objc/runtime.h>
 #import "MCPhotoCaptureProcessor.h"
 #import "MCProcessingQueue.h"
 
@@ -64,6 +65,16 @@ static MCPhotoCaptureProcessor *NewCapture(NSDictionary *settings,BOOL live,disp
 
 int main(void) {@autoreleasepool {
  Scenarios=[NSMutableArray new];
+ // Check the actual framework protocol as well as our app's required contract.
+ for(NSString *name in @[@"captureOutput:didCapturePhotoForResolvedSettings:",
+  @"captureOutput:didFinishProcessingPhoto:error:",
+  @"captureOutput:didFinishCaptureForResolvedSettings:error:",
+  @"captureOutput:didFinishProcessingLivePhotoToMovieFileAtURL:duration:photoDisplayTime:resolvedSettings:error:"]){
+  SEL selector=NSSelectorFromString(name);
+  struct objc_method_description method=protocol_getMethodDescription(@protocol(AVCapturePhotoCaptureDelegate),selector,NO,YES);
+  Require(method.name!=NULL,[@"callback exists in native framework protocol: " stringByAppendingString:name]);
+ }
+
  ProbeDirectory=[NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:[@"markcam-capture-" stringByAppendingString:NSUUID.UUID.UUIDString]] isDirectory:YES];
  Require([NSFileManager.defaultManager createDirectoryAtURL:ProbeDirectory withIntermediateDirectories:YES attributes:nil error:nil],@"create isolated fixture directory");
  dispatch_queue_t disk=dispatch_queue_create("markcam.capture.probe",DISPATCH_QUEUE_SERIAL);

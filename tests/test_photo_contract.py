@@ -29,7 +29,7 @@ def compile_source(path):
 
 
 # Check against Apple's original protocol before the app's required redeclaration
-# is visible. A invented optional selector can otherwise compile in both the
+# is visible. An invented optional selector can otherwise compile in both the
 # declaration and implementation while AVFoundation never calls it.
 selectors = [
     'captureOutput:didCapturePhotoForResolvedSettings:',
