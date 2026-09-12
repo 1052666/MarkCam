@@ -40,6 +40,8 @@ def validate_ipa(ipa,build_report):
         check('Bundle identifier unchanged',info['CFBundleIdentifier']=='app.markcam.camera')
         check('Correct minimum OS',info['MinimumOSVersion']=='16.5')
         check('iPhone device family',info['UIDeviceFamily']==[1])
+        check('Native scene lifecycle declared',info['UIApplicationSceneManifest']['UISceneConfigurations']['UIWindowSceneSessionRoleApplication'][0]['UISceneDelegateClassName']=='MCSceneDelegate')
+        check('No Liquid Glass compatibility opt-out',not info.get('UIDesignRequiresCompatibility',False))
         for k in ['NSCameraUsageDescription','NSMicrophoneUsageDescription','NSPhotoLibraryAddUsageDescription']:
             check('Permission '+k,len(info.get(k,''))>8)
         check('No read-all photo permission','NSPhotoLibraryUsageDescription' not in info)
@@ -67,7 +69,7 @@ def validate_ipa(ipa,build_report):
             if cmd in (0xc,0x80000018):
                 off=struct.unpack_from('<I',binary,at+8)[0];libs.append(binary[at+off:at+size].split(b'\0')[0].decode())
             if cmd==0x32:
-                plat,minos,sdk,ntools=struct.unpack_from('<4I',binary,at+8);check('LC_BUILD_VERSION iOS16.5',plat==2 and minos==0x100500)
+                plat,minos,sdk,ntools=struct.unpack_from('<4I',binary,at+8);check('LC_BUILD_VERSION iOS16.5',plat==2 and minos==0x100500);check('Linked with iOS 26+ SDK for Liquid Glass',sdk>=0x1a0000)
             if cmd==0x1d:signature=struct.unpack_from('<II',binary,at+8)
             at+=size
         check('Load command table size',at==32+sz)
