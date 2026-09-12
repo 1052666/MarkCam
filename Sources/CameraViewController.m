@@ -393,8 +393,10 @@ static NSString *MCID(void){return [NSString stringWithFormat:@"%013lld-%@",(lon
 - (void)openEditor { [self presentEditorAtSettings:NO]; }
 - (void)presentEditorAtSettings:(BOOL)settings {
  if(self.busy||self.recording||self.photoCaptures.count)return;self.busy=YES;[self updateControls];__weak typeof(self) weak=self;
- [self.preview requestSnapshot:^(UIImage *image){CameraViewController *camera=weak;if(!camera)return;camera.busy=NO;if(camera.inBackground){[camera updateControls];return;}camera.editorShown=YES;[camera updatePreviewRoute];dispatch_async(camera.sessionQueue,^{[camera.session stopRunning];});
- WMEditorViewController *e=[WMEditorViewController new];e.opensSettings=settings;e.backgroundImage=image;e.onChange=^{[weak refreshSettings];};UINavigationController *nav=[[UINavigationController alloc]initWithRootViewController:e];nav.modalPresentationStyle=UIModalPresentationFullScreen;[camera presentViewController:nav animated:YES completion:nil];[camera updateControls];}];
+ void (^present)(UIImage *)=^(UIImage *image){CameraViewController *camera=weak;if(!camera)return;camera.busy=NO;if(camera.inBackground){[camera updateControls];return;}camera.editorShown=YES;[camera updatePreviewRoute];dispatch_async(camera.sessionQueue,^{[camera.session stopRunning];});
+ WMEditorViewController *e=[WMEditorViewController new];e.opensSettings=settings;e.backgroundImage=image;e.onChange=^{[weak refreshSettings];};UINavigationController *nav=[[UINavigationController alloc]initWithRootViewController:e];nav.modalPresentationStyle=UIModalPresentationFullScreen;[camera presentViewController:nav animated:YES completion:nil];[camera updateControls];};
+ // Settings has no photo canvas; do not wait up to 700ms for a preview frame.
+ if(settings)present(nil);else [self.preview requestSnapshot:present];
 }
 - (void)viewDidAppear:(BOOL)animated {[super viewDidAppear:animated];if(self.editorShown&&!self.presentedViewController){self.editorShown=NO;self.gpuFailed=NO;[self refreshSettings];[self updateControls];[self resumeCameraSession];}}
 - (void)updateControls {

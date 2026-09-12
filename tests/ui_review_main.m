@@ -205,13 +205,21 @@ static UIImage *Fixture(void) {
             case 8: [self checkEditorTab:3];[self snapshot:@"07-editor-settings"];
                 [self.host setOverrideTraitCollection:[UITraitCollection traitCollectionWithPreferredContentSizeCategory:UIContentSizeCategoryAccessibilityExtraExtraExtraLarge] forChildViewController:self.host.content];break;
             case 9: [self checkEditorTab:3];[self snapshot:@"08-editor-accessibility-text"];
-                self.editor=[WMEditorViewController new];self.editor.opensSettings=YES;self.editor.backgroundImage=Fixture();[self.host show:[[UINavigationController alloc] initWithRootViewController:self.editor]];break;
-            case 10: Check(@"Settings opens its own tab directly",[(UISegmentedControl *)[self.editor valueForKey:@"sectionPicker"] selectedSegmentIndex]==3);[self checkEditorTab:3];
-                [self.host show:self.camera];[self.host setOverrideTraitCollection:[UITraitCollection traitCollectionWithAccessibilityContrast:UIAccessibilityContrastHigh] forChildViewController:self.camera];[self.camera modeChanged];break;
-            case 11: {
+                [self.host show:self.camera];[self.camera modeChanged];[[self.camera valueForKey:@"settingsButton"] sendActionsForControlEvents:UIControlEventTouchUpInside];
+                Check(@"Settings presents without waiting for a frame",[self.camera.presentedViewController isKindOfClass:UINavigationController.class]);break;
+            case 10: {
+                UINavigationController *navigation=(UINavigationController *)self.camera.presentedViewController;
+                self.editor=(WMEditorViewController *)navigation.topViewController;
+                Check(@"Settings opens its own tab directly",[(UISegmentedControl *)[self.editor valueForKey:@"sectionPicker"] selectedSegmentIndex]==3);[self checkEditorTab:3];
+                [self snapshot:@"09-editor-direct-settings"];
+                [self.camera dismissViewControllerAnimated:NO completion:nil];break;
+            }
+            case 11: Check(@"Returning from actual settings restores capture",[(UIButton *)[self.camera valueForKey:@"shutter"] isEnabled]);
+                [self.host setOverrideTraitCollection:[UITraitCollection traitCollectionWithAccessibilityContrast:UIAccessibilityContrastHigh] forChildViewController:self.camera];[self.camera modeChanged];break;
+            case 12: {
                 MCChromeView *dock=[self.camera valueForKey:@"captureDock"];
                 Check(@"High contrast uses opaque chrome",[(UIView *)[dock valueForKey:@"material"] isHidden]);
-                [self snapshot:@"09-camera-high-contrast"];[self finish];return;
+                [self snapshot:@"10-camera-high-contrast"];[self finish];return;
             }
             default: [self finish];return;
         }
